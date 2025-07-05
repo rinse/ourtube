@@ -314,6 +314,92 @@ app.get('/api/conversion-status', (req: Request, res: Response) => {
   res.json({ jobs });
 });
 
+// Delete video endpoint
+app.delete('/api/videos/:videoid', async (req: Request, res: Response): Promise<void> => {
+  const { videoid } = req.params;
+  
+  try {
+    // Check if video exists
+    const video = await database.getVideoMetadata(videoid);
+    if (!video) {
+      res.status(404).json({
+        message: 'failure',
+        reason: 'Video not found'
+      });
+      return;
+    }
+
+    // Delete from database
+    const dbDeleted = await database.deleteVideo(videoid);
+    if (!dbDeleted) {
+      res.status(500).json({
+        message: 'failure',
+        reason: 'Failed to delete video from database'
+      });
+      return;
+    }
+
+    // Delete video files
+    const videoDir = path.join(__dirname, '..', 'videos', video.folder);
+    if (fs.existsSync(videoDir)) {
+      fs.rmSync(videoDir, { recursive: true, force: true });
+    }
+
+    res.json({ message: 'ok' });
+  } catch (error) {
+    console.error('Delete error:', error);
+    res.status(500).json({
+      message: 'failure',
+      reason: error instanceof Error ? error.message : 'Failed to delete video'
+    });
+  }
+});
+
+// Update video title endpoint
+app.put('/api/videos/:videoid', async (req: Request, res: Response): Promise<void> => {
+  const { videoid } = req.params;
+  const { title } = req.body;
+  
+  try {
+    // Validate input
+    if (!title || typeof title !== 'string') {
+      res.status(400).json({
+        message: 'failure',
+        reason: 'Title is required and must be a string'
+      });
+      return;
+    }
+
+    // Check if video exists
+    const video = await database.getVideoMetadata(videoid);
+    if (!video) {
+      res.status(404).json({
+        message: 'failure',
+        reason: 'Video not found'
+      });
+      return;
+    }
+
+    // Update title
+    const updated = await database.updateVideoTitle(videoid, title);
+    if (!updated) {
+      res.status(500).json({
+        message: 'failure',
+        reason: 'Failed to update video title'
+      });
+      return;
+    }
+
+    res.json({ message: 'ok' });
+  } catch (error) {
+    console.error('Update error:', error);
+    res.status(500).json({
+      message: 'failure',
+      reason: error instanceof Error ? error.message : 'Failed to update video title'
+    });
+  }
+});
+
 app.use((req: Request, res: Response) => {
   res.status(404).json({
     error: 'Not Found',

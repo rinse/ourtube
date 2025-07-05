@@ -123,16 +123,11 @@ export default function VideoList() {
         const isReady = video.status === 'ready';
         const isConverting = video.status === 'converting';
         
-        const CardWrapper = isReady ? Link : 'div';
-        const cardProps = isReady ? { href: `/videos/${video.id}` } : {};
-        
-        return (
-          <CardWrapper 
+        return isReady ? (
+          <Link 
             key={video.id}
-            {...cardProps}
-            className={`bg-white rounded-lg shadow-md overflow-hidden transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-              isReady ? 'hover:shadow-lg hover:scale-[1.02] cursor-pointer' : 'cursor-not-allowed opacity-75'
-            }`}
+            href={`/videos/${video.id}`}
+            className={`bg-white rounded-lg shadow-md overflow-hidden transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 hover:shadow-lg hover:scale-[1.02] cursor-pointer`}
           >
           {/* Video Thumbnail */}
           <div className="w-full aspect-video bg-gradient-to-br from-gray-200 via-gray-300 to-gray-400 relative group">
@@ -206,7 +201,82 @@ export default function VideoList() {
               )}
             </div>
           </div>
-        </CardWrapper>
+          </Link>
+        ) : (
+          <div 
+            key={video.id}
+            className={`bg-white rounded-lg shadow-md overflow-hidden transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-not-allowed opacity-75`}
+          >
+          {/* Video Thumbnail */}
+          <div className="w-full aspect-video bg-gradient-to-br from-gray-200 via-gray-300 to-gray-400 relative group">
+            {video.hasThumbnail && video.thumbnailUrl ? (
+              <img 
+                src={video.thumbnailUrl}
+                alt={video.title}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <svg className="w-16 h-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </div>
+            )}
+            
+            {/* Play Button Overlay */}
+            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200">
+              <div className="bg-white rounded-full p-3 opacity-0 group-hover:opacity-100 transform scale-50 group-hover:scale-100 transition-all duration-200 shadow-lg">
+                <svg className="w-6 h-6 text-gray-800" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+              </div>
+            </div>
+            
+            {/* Status Badge */}
+            <div className={`absolute top-2 right-2 px-2 py-1 rounded-full text-xs font-medium ${
+              isReady ? 'bg-green-100 text-green-800' : 
+              isConverting ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
+            }`}>
+              {isReady ? 'Ready' : isConverting ? 'Converting' : 'Failed'}
+            </div>
+          </div>
+          
+          {/* Video Info */}
+          <div className="p-4">
+            <h3 className="text-lg font-semibold text-gray-800 mb-2 line-clamp-2">
+              {video.title}
+            </h3>
+            <p className="text-xs text-gray-600 mb-1">
+              Video ID: {video.id.substring(0, 8)}...
+            </p>
+            <div className={`flex items-center text-xs ${
+              isReady ? 'text-green-600' : isConverting ? 'text-yellow-600' : 'text-red-600'
+            }`}>
+              {isReady ? (
+                <>
+                  <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  </svg>
+                  Ready to Play
+                </>
+              ) : isConverting ? (
+                <>
+                  <svg className="w-3 h-3 mr-1 animate-spin" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  </svg>
+                  Converting...
+                </>
+              ) : (
+                <>
+                  <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                  </svg>
+                  Conversion Failed
+                </>
+              )}
+            </div>
+          </div>
+          </div>
         );
       })}
     </div>

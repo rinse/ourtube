@@ -95,6 +95,19 @@ class Database {
     });
   }
 
+  public async updateVideoTitle(videoId: string, newTitle: string): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      const sql = 'UPDATE videos SET title = ? WHERE id = ?';
+      this.db.run(sql, [newTitle, videoId], function(err) {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(this.changes > 0);
+        }
+      });
+    });
+  }
+
   public close(): void {
     this.db.close((err) => {
       if (err) {

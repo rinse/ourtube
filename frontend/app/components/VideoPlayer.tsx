@@ -77,9 +77,9 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
     try {
       if (!document.fullscreenElement) {
         await video.requestFullscreen();
-        if (screen.orientation && screen.orientation.lock) {
+        if (screen.orientation && 'lock' in screen.orientation) {
           try {
-            await screen.orientation.lock('landscape');
+            await (screen.orientation as { lock: (orientation: string) => Promise<void> }).lock('landscape');
           } catch (e) {
             console.log('Screen orientation lock failed:', e);
           }
@@ -87,9 +87,9 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
         setIsFullscreen(true);
       } else {
         await document.exitFullscreen();
-        if (screen.orientation && screen.orientation.unlock) {
+        if (screen.orientation && 'unlock' in screen.orientation) {
           try {
-            screen.orientation.unlock();
+            (screen.orientation as { unlock: () => void }).unlock();
           } catch (e) {
             console.log('Screen orientation unlock failed:', e);
           }
