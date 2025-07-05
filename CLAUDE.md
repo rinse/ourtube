@@ -53,6 +53,17 @@ pkill -f "nodemon"
 - `GET /api` - Welcome message and status
 - `GET /api/health` - Health check endpoint
 
+## Video Storage and Conversion
+
+- Videos are stored in `resources/` directory (git-ignored)
+- Convert videos to HLS format using ffmpeg:
+```bash
+ffmpeg -i resources/<video-filename> -f hls -hls_time 10 -hls_list_size 0 -hls_playlist_type vod backend/videos/<videoid>/index.m3u8
+```
+
+**Important**:
+- The `-hls_playlist_type vod` flag ensures the `#EXT-X-ENDLIST` tag is added to the manifest, which makes the video start from the beginning (00:00) instead of the end
+
 ## Key Technical Decisions
 
 - Video IDs will use SHA256 hashes for unique identification
