@@ -2,6 +2,7 @@
 
 import { useState, ChangeEvent, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export default function UploadPage() {
   const router = useRouter()
@@ -57,15 +58,34 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold mb-8">Upload Video</h1>
-        
-        <form onSubmit={handleUpload} className="max-w-2xl mx-auto">
-          <div className="bg-gray-900 rounded-lg p-8 space-y-6">
-            {/* File Input Section */}
+    <div className="min-h-screen bg-gray-100">
+      <header className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="py-4 flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-gray-900">Video Streaming Service</h1>
+            <Link
+              href="/"
+              className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              <span>Back to Videos</span>
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-2xl mx-auto">
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold text-gray-800 mb-2">Upload New Video</h2>
+            <p className="text-gray-600">Choose a video file to upload and convert to HLS format</p>
+          </div>
+          
+          <form onSubmit={handleUpload} className="bg-white rounded-lg shadow-lg p-8 space-y-6">
             <div>
-              <label className="block text-sm font-medium mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Video File
               </label>
               <div className="space-y-3">
@@ -74,7 +94,7 @@ export default function UploadPage() {
                   value={filePath}
                   onChange={(e) => setFilePath(e.target.value)}
                   placeholder="Enter file path or select a file"
-                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500"
+                  className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                 />
                 <div className="flex items-center space-x-3">
                   <input
@@ -86,12 +106,12 @@ export default function UploadPage() {
                   />
                   <label
                     htmlFor="fileInput"
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg cursor-pointer transition-colors"
+                    className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg cursor-pointer transition-colors font-medium"
                   >
                     Choose File
                   </label>
                   {selectedFile && (
-                    <span className="text-sm text-gray-400">
+                    <span className="text-sm text-gray-600">
                       Selected: {selectedFile.name}
                     </span>
                   )}
@@ -99,9 +119,8 @@ export default function UploadPage() {
               </div>
             </div>
 
-            {/* Title Input */}
             <div>
-              <label htmlFor="title" className="block text-sm font-medium mb-2">
+              <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
                 Video Title (optional)
               </label>
               <input
@@ -110,25 +129,23 @@ export default function UploadPage() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Enter video title (uses filename if empty)"
-                className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500"
+                className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
               />
             </div>
 
-            {/* Error Message */}
             {error && (
-              <div className="p-4 bg-red-900/20 border border-red-600 rounded-lg text-red-400">
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
                 {error}
               </div>
             )}
 
-            {/* Action Buttons */}
             <div className="flex space-x-4 pt-4">
               <button
                 type="submit"
                 disabled={isUploading || !selectedFile}
                 className={`flex-1 py-3 px-6 rounded-lg font-medium transition-colors ${
                   isUploading || !selectedFile
-                    ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                     : 'bg-blue-600 hover:bg-blue-700 text-white'
                 }`}
               >
@@ -137,14 +154,14 @@ export default function UploadPage() {
               <button
                 type="button"
                 onClick={() => router.push('/')}
-                className="px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium transition-colors"
+                className="px-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-colors"
               >
                 Cancel
               </button>
             </div>
-          </div>
-        </form>
-      </div>
+          </form>
+        </div>
+      </main>
     </div>
   )
 }
