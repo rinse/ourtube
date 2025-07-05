@@ -8,6 +8,8 @@ interface Video {
   title: string;
   hlsUrl: string;
   status: 'converting' | 'ready' | 'failed';
+  hasThumbnail?: boolean;
+  thumbnailUrl?: string | null;
 }
 
 interface VideoListResponse {
@@ -124,7 +126,19 @@ export default function VideoList() {
           >
           {/* Video Thumbnail */}
           <div className="w-full aspect-video bg-gradient-to-br from-gray-200 via-gray-300 to-gray-400 relative group">
-            <div className="absolute inset-0 flex items-center justify-center">
+            {video.hasThumbnail && video.thumbnailUrl ? (
+              <img 
+                src={video.thumbnailUrl} 
+                alt={video.title}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  // Hide the broken image and show the fallback
+                  e.currentTarget.style.display = 'none';
+                  e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                }}
+              />
+            ) : null}
+            <div className={`absolute inset-0 flex items-center justify-center ${video.hasThumbnail && video.thumbnailUrl ? 'hidden' : ''}`}>
               <div className="text-center text-gray-600">
                 <svg className="w-8 h-8 md:w-12 md:h-12 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 002 2v8a2 2 0 002 2z" />

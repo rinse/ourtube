@@ -81,6 +81,15 @@ async function performConversion(job: ConversionJob): Promise<void> {
     if (code === 0) {
       job.status = 'completed';
       
+      // Generate thumbnail after successful HLS conversion
+      try {
+        await generateThumbnail(job.sourcePath, job.targetPath);
+        console.log(`Thumbnail generated for video ${job.videoId}`);
+      } catch (error) {
+        console.error('Failed to generate thumbnail:', error);
+        // Continue even if thumbnail generation fails
+      }
+      
       // Update video status in database
       try {
         const videoMetadata = await database.getVideoMetadata(job.videoId);
@@ -105,5 +114,39 @@ async function performConversion(job: ConversionJob): Promise<void> {
     job.status = 'failed';
     job.error = error.message;
     console.error('FFmpeg error:', error);
+  });
+}
+
+async function generateThumbnail(sourcePath: string, targetDir: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const thumbnailPath = path.join(targetDir, 'thumbnail.png');
+    
+    // Generate thumbnail from the 10-second mark of the video
+    const ffmpeg = spawn('ffmpeg', [
+      '-i', sourcePath,
+      '-ss', '10',  // Seek to 10 seconds
+      '-vframes', '1',  // Extract 1 frame
+      '-vf', 'scale=320:180',  // Scale to 320x180 (16:9 aspect ratio)
+      '-y',  // Overwrite output file
+      thumbnailPath
+    ]);
+    
+    let errorOutput = '';
+    
+    ffmpeg.stderr.on('data', (data) => {
+      errorOutput += data.toString();
+    });
+    
+    ffmpeg.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Thumbnail generation failed with code ${code}: ${errorOutput}`));
+      }
+    });
+    
+    ffmpeg.on('error', (error) => {
+      reject(error);
+    });
   });
 }

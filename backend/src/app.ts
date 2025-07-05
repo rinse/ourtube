@@ -49,12 +49,20 @@ app.get('/api/health', (req: Request, res: Response) => {
 app.get('/api/videos', async (req: Request, res: Response): Promise<void> => {
   try {
     const videos = await database.listVideos();
-    const videoList = videos.map(video => ({
-      id: video.id,
-      title: video.title,
-      hlsUrl: `/api/videos/${video.id}`,
-      status: video.status
-    }));
+    const videoList = videos.map(video => {
+      // Check if thumbnail exists
+      const thumbnailPath = path.join(__dirname, '..', 'videos', video.folder, 'thumbnail.png');
+      const hasThumbnail = fs.existsSync(thumbnailPath);
+      
+      return {
+        id: video.id,
+        title: video.title,
+        hlsUrl: `/api/videos/${video.id}`,
+        status: video.status,
+        hasThumbnail: hasThumbnail,
+        thumbnailUrl: hasThumbnail ? `/api/videos/${video.id}/thumbnail.png` : null
+      };
+    });
     
     res.json({
       videos: videoList,
@@ -139,11 +147,17 @@ app.get('/api/videos/:videoid/info', async (req: Request, res: Response): Promis
       return;
     }
 
+    // Check if thumbnail exists
+    const thumbnailPath = path.join(__dirname, '..', 'videos', video.folder, 'thumbnail.png');
+    const hasThumbnail = fs.existsSync(thumbnailPath);
+
     res.json({
       id: video.id,
       title: video.title,
       hlsUrl: `/api/videos/${video.id}`,
-      status: video.status
+      status: video.status,
+      hasThumbnail: hasThumbnail,
+      thumbnailUrl: hasThumbnail ? `/api/videos/${video.id}/thumbnail.png` : null
     });
   } catch (error) {
     console.error('Error fetching video info:', error);
@@ -170,10 +184,10 @@ app.get('/api/videos/:videoid/:filename', async (req: Request, res: Response): P
     }
 
   // Validate file extension for security
-  if (!filename.endsWith('.ts') && !filename.endsWith('.vtt') && !filename.endsWith('.m3u8')) {
+  if (!filename.endsWith('.ts') && !filename.endsWith('.vtt') && !filename.endsWith('.m3u8') && filename !== 'thumbnail.png') {
     res.status(400).json({
       error: 'Invalid file type',
-      message: 'Only .ts, .vtt, and .m3u8 files are allowed'
+      message: 'Only .ts, .vtt, .m3u8 files and thumbnail.png are allowed'
     });
     return;
   }
@@ -195,6 +209,8 @@ app.get('/api/videos/:videoid/:filename', async (req: Request, res: Response): P
     res.setHeader('Content-Type', 'text/vtt');
   } else if (filename.endsWith('.m3u8')) {
     res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+  } else if (filename === 'thumbnail.png') {
+    res.setHeader('Content-Type', 'image/png');
   }
   
     res.setHeader('Cache-Control', 'public, max-age=3600');
