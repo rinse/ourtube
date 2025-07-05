@@ -33,6 +33,21 @@ npm run build  # TypeScript compilation
 npm start      # Production server
 ```
 
+## Server Process Management
+
+**Important**: Kill existing server processes if you find the server is already running and the port is occupied.
+
+```bash
+# Check for running processes on specific ports
+lsof -ti:3000 | xargs kill -9  # Kill frontend process on port 3000
+lsof -ti:4000 | xargs kill -9  # Kill backend process on port 4000
+
+# Or check and kill by process name
+pkill -f "npm run dev"
+pkill -f "next dev"
+pkill -f "nodemon"
+```
+
 ## API Endpoints
 
 - `GET /api` - Welcome message and status
