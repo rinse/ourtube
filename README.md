@@ -68,9 +68,9 @@
 - [x] レスポンシブデザイン対応
 
 ### 5. バックエンドのHLSファイル配信
-- [ ] バックエンドでHLSファイルを配信する機能の実装
-- [ ] フロントエンドの`public/`下の動画ファイルをバックエンドに移動
-- [ ] フロントエンドからバックエンドの動画を再生できることを確認
+- [x] バックエンドでHLSファイルを配信する機能の実装
+- [x] フロントエンドの`public/`下の動画ファイルをバックエンドに移動
+- [x] フロントエンドからバックエンドの動画を再生できることを確認
 
 ### 6. 動画一覧画面の実装
 - [ ] バックエンド：動画一覧を返すAPIの作成
@@ -105,6 +105,9 @@
 ### 現在実装済み
 - `GET /api` - Welcome message and status
 - `GET /api/health` - Health check endpoint
+- `GET /api/videos/:videoid` - HLS manifest file (.m3u8) for video streaming
+- `GET /api/videos/:videoid/:filename` - HLS segment files (.ts, .vtt, .m3u8)
+- `GET /api/videos/:videoid/info` - Video metadata (id, title, hlsUrl)
 
 ### フロントエンド・バックエンド連携
 - フロントエンド: `http://localhost:3000`

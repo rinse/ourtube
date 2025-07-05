@@ -32,3 +32,7 @@ Thumbs.db
 .tmp/
 tmp/
 temp/
+
+# Videos
+videos/
+videos.db
