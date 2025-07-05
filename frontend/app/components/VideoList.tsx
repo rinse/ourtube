@@ -23,6 +23,8 @@ export default function VideoList() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+
     const fetchVideos = () => {
       fetch('/api/videos')
         .then(res => {
@@ -34,6 +36,20 @@ export default function VideoList() {
         .then((data: VideoListResponse) => {
           setVideos(data.videos);
           setLoading(false);
+          
+          // Clear any existing interval
+          if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = null;
+          }
+          
+          // Only set up interval if there are converting videos
+          const hasConvertingVideos = data.videos.some(v => v.status === 'converting');
+          if (hasConvertingVideos) {
+            intervalId = setInterval(() => {
+              fetchVideos();
+            }, 5000);
+          }
         })
         .catch(err => {
           setError(err.message);
@@ -44,16 +60,10 @@ export default function VideoList() {
     // Initial fetch
     fetchVideos();
 
-    // Refresh every 5 seconds if there are converting videos
-    const interval = setInterval(() => {
-      const hasConvertingVideos = videos.some(v => v.status === 'converting');
-      if (hasConvertingVideos) {
-        fetchVideos();
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [videos]);
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, []);
 
   if (loading) {
     return (
