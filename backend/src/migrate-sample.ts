@@ -6,6 +6,7 @@ async function migrateSampleVideo() {
     id: videoId,
     title: 'サンプル動画',
     folder: videoId,
+    status: 'ready' as const,
     created_at: new Date().toISOString()
   };
 

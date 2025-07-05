@@ -1,10 +1,28 @@
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import fs from 'fs';
+import multer from 'multer';
 import { database, VideoMetadata } from './database';
+import { generateVideoId, convertToHLS, getConversionStatus, getAllConversionJobs } from './video-processor';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+// Configure multer for video uploads
+const upload = multer({
+  dest: path.join(__dirname, '..', 'uploads'),
+  limits: {
+    fileSize: 5 * 1024 * 1024 * 1024 // 5GB max file size
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept video files only
+    if (file.mimetype.startsWith('video/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only video files are allowed'));
+    }
+  }
+});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -34,7 +52,8 @@ app.get('/api/videos', async (req: Request, res: Response): Promise<void> => {
     const videoList = videos.map(video => ({
       id: video.id,
       title: video.title,
-      hlsUrl: `/api/videos/${video.id}`
+      hlsUrl: `/api/videos/${video.id}`,
+      status: video.status
     }));
     
     res.json({
@@ -61,6 +80,15 @@ app.get('/api/videos/:videoid', async (req: Request, res: Response): Promise<voi
       res.status(404).json({
         error: 'Video not found',
         message: `Video with ID ${videoid} does not exist`
+      });
+      return;
+    }
+
+    if (video.status !== 'ready') {
+      res.status(503).json({
+        error: 'Video not ready',
+        message: `Video is still ${video.status}`,
+        status: video.status
       });
       return;
     }
@@ -114,7 +142,8 @@ app.get('/api/videos/:videoid/info', async (req: Request, res: Response): Promis
     res.json({
       id: video.id,
       title: video.title,
-      hlsUrl: `/api/videos/${video.id}`
+      hlsUrl: `/api/videos/${video.id}`,
+      status: video.status
     });
   } catch (error) {
     console.error('Error fetching video info:', error);
@@ -177,6 +206,96 @@ app.get('/api/videos/:videoid/:filename', async (req: Request, res: Response): P
       message: 'Failed to fetch video information'
     });
   }
+});
+
+// Upload video endpoint
+app.post('/api/upload', upload.single('video'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!req.file) {
+      res.status(400).json({
+        error: 'No file uploaded',
+        message: 'Please provide a video file'
+      });
+      return;
+    }
+
+    const title = req.body.title || req.file.originalname.replace(/\.[^/.]+$/, '');
+    
+    // Generate video ID from file content
+    const videoId = await generateVideoId(req.file.path);
+    
+    // Check if video already exists
+    const existingVideo = await database.getVideoMetadata(videoId);
+    if (existingVideo) {
+      // Delete uploaded file
+      fs.unlinkSync(req.file.path);
+      
+      res.status(409).json({
+        error: 'Video already exists',
+        message: 'This video has already been uploaded',
+        videoId: videoId
+      });
+      return;
+    }
+    
+    // Create video directory
+    const videoDir = path.join(__dirname, '..', 'videos', videoId);
+    
+    // Save video metadata
+    const metadata: VideoMetadata = {
+      id: videoId,
+      title: title,
+      folder: videoId,
+      status: 'converting',
+      created_at: new Date().toISOString()
+    };
+    
+    await database.saveVideoMetadata(metadata);
+    
+    // Start HLS conversion in background
+    convertToHLS(videoId, req.file.path, videoDir);
+    
+    res.json({
+      message: 'Video uploaded successfully',
+      videoId: videoId,
+      title: title,
+      status: 'converting'
+    });
+  } catch (error) {
+    console.error('Upload error:', error);
+    
+    // Clean up uploaded file on error
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    
+    res.status(500).json({
+      error: 'Upload failed',
+      message: error instanceof Error ? error.message : 'Failed to process upload'
+    });
+  }
+});
+
+// Get conversion status endpoint
+app.get('/api/conversion-status/:videoid', (req: Request, res: Response) => {
+  const { videoid } = req.params;
+  const status = getConversionStatus(videoid);
+  
+  if (!status) {
+    res.status(404).json({
+      error: 'Not found',
+      message: 'No conversion job found for this video ID'
+    });
+    return;
+  }
+  
+  res.json(status);
+});
+
+// Get all conversion jobs
+app.get('/api/conversion-status', (req: Request, res: Response) => {
+  const jobs = getAllConversionJobs();
+  res.json({ jobs });
 });
 
 app.use((req: Request, res: Response) => {

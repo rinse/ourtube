@@ -7,6 +7,7 @@ interface Video {
   id: string;
   title: string;
   hlsUrl: string;
+  status: 'converting' | 'ready' | 'failed';
 }
 
 interface VideoListResponse {
@@ -20,22 +21,37 @@ export default function VideoList() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/videos')
-      .then(res => {
-        if (!res.ok) {
-          throw new Error('Failed to fetch videos');
-        }
-        return res.json();
-      })
-      .then((data: VideoListResponse) => {
-        setVideos(data.videos);
-        setLoading(false);
-      })
-      .catch(err => {
-        setError(err.message);
-        setLoading(false);
-      });
-  }, []);
+    const fetchVideos = () => {
+      fetch('/api/videos')
+        .then(res => {
+          if (!res.ok) {
+            throw new Error('Failed to fetch videos');
+          }
+          return res.json();
+        })
+        .then((data: VideoListResponse) => {
+          setVideos(data.videos);
+          setLoading(false);
+        })
+        .catch(err => {
+          setError(err.message);
+          setLoading(false);
+        });
+    };
+
+    // Initial fetch
+    fetchVideos();
+
+    // Refresh every 5 seconds if there are converting videos
+    const interval = setInterval(() => {
+      const hasConvertingVideos = videos.some(v => v.status === 'converting');
+      if (hasConvertingVideos) {
+        fetchVideos();
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [videos]);
 
   if (loading) {
     return (
@@ -91,12 +107,21 @@ export default function VideoList() {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-      {videos.map((video) => (
-        <Link 
-          key={video.id}
-          href={`/videos/${video.id}`}
-          className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-all duration-200 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-        >
+      {videos.map((video) => {
+        const isReady = video.status === 'ready';
+        const isConverting = video.status === 'converting';
+        
+        const CardWrapper = isReady ? Link : 'div';
+        const cardProps = isReady ? { href: `/videos/${video.id}` } : {};
+        
+        return (
+          <CardWrapper 
+            key={video.id}
+            {...cardProps}
+            className={`bg-white rounded-lg shadow-md overflow-hidden transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+              isReady ? 'hover:shadow-lg hover:scale-[1.02] cursor-pointer' : 'cursor-not-allowed opacity-75'
+            }`}
+          >
           {/* Video Thumbnail */}
           <div className="w-full aspect-video bg-gradient-to-br from-gray-200 via-gray-300 to-gray-400 relative group">
             <div className="absolute inset-0 flex items-center justify-center">
@@ -129,15 +154,37 @@ export default function VideoList() {
             <p className="text-xs text-gray-600 mb-1">
               Video ID: {video.id.substring(0, 8)}...
             </p>
-            <div className="flex items-center text-xs text-gray-500">
-              <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-              </svg>
-              HLS Ready
+            <div className={`flex items-center text-xs ${
+              isReady ? 'text-green-600' : isConverting ? 'text-yellow-600' : 'text-red-600'
+            }`}>
+              {isReady ? (
+                <>
+                  <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  </svg>
+                  Ready to Play
+                </>
+              ) : isConverting ? (
+                <>
+                  <svg className="w-3 h-3 mr-1 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Converting...
+                </>
+              ) : (
+                <>
+                  <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                  </svg>
+                  Conversion Failed
+                </>
+              )}
             </div>
           </div>
-        </Link>
-      ))}
+        </CardWrapper>
+        );
+      })}
     </div>
   );
 }
