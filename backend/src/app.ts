@@ -4,6 +4,18 @@ import fs from 'fs';
 import multer from 'multer';
 import { database, VideoMetadata } from './database';
 import { generateVideoId, convertToHLS, getConversionStatus, getAllConversionJobs } from './video-processor';
+import {
+  ApiErrorResponse,
+  ApiStatusResponse,
+  VideoListResponse,
+  VideoInfoResponse,
+  UploadResponse,
+  ConversionStatus,
+  AllConversionStatusResponse,
+  UpdateVideoResponse,
+  DeleteVideoResponse,
+  VideoItem
+} from './api-schemas';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -28,19 +40,21 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/api', (req: Request, res: Response) => {
-  res.json({
+  const response: ApiStatusResponse = {
     message: 'Welcome to Video Streaming Service API',
     status: 'running',
     timestamp: new Date().toISOString()
-  });
+  };
+  res.json(response);
 });
 
 app.get('/api/health', (req: Request, res: Response) => {
-  res.json({
+  const response: ApiStatusResponse = {
     status: 'healthy',
     uptime: process.uptime(),
     timestamp: new Date().toISOString()
-  });
+  };
+  res.json(response);
 });
 
 
@@ -49,7 +63,7 @@ app.get('/api/health', (req: Request, res: Response) => {
 app.get('/api/videos', async (req: Request, res: Response): Promise<void> => {
   try {
     const videos = await database.listVideos();
-    const videoList = videos.map(video => {
+    const videoList: VideoItem[] = videos.map(video => {
       // Check if thumbnail exists
       const thumbnailPath = path.join(__dirname, '..', 'videos', video.folder, 'thumbnail.png');
       const hasThumbnail = fs.existsSync(thumbnailPath);
@@ -64,16 +78,18 @@ app.get('/api/videos', async (req: Request, res: Response): Promise<void> => {
       };
     });
     
-    res.json({
+    const response: VideoListResponse = {
       videos: videoList,
       count: videoList.length
-    });
+    };
+    res.json(response);
   } catch (error) {
     console.error('Error fetching videos:', error);
-    res.status(500).json({
+    const errorResponse: ApiErrorResponse = {
       error: 'Database error',
       message: 'Failed to fetch videos'
-    });
+    };
+    res.status(500).json(errorResponse);
   }
 });
 

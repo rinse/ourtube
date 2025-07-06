@@ -136,7 +136,7 @@ export default function VideoList() {
                 src={video.thumbnailUrl} 
                 alt={video.title}
                 className="w-full h-full object-cover"
-                onError={(e) => {
+                onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
                   // Hide the broken image and show the fallback
                   e.currentTarget.style.display = 'none';
                   e.currentTarget.nextElementSibling?.classList.remove('hidden');

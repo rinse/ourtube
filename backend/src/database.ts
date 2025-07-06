@@ -1,12 +1,30 @@
 import sqlite3 from 'sqlite3';
 import path from 'path';
+import * as t from 'io-ts';
+import { pipe } from 'fp-ts/function';
+import { fold } from 'fp-ts/Either';
+import { PathReporter } from 'io-ts/PathReporter';
 
-export interface VideoMetadata {
-  id: string;      // SHA256 hash
-  title: string;
-  folder: string;  // Directory name (same as id)
-  status: 'converting' | 'ready' | 'failed';
-  created_at: string;
+// Define the runtime codec for VideoMetadata
+export const VideoMetadataCodec = t.type({
+  id: t.string,
+  title: t.string,
+  folder: t.string,
+  status: t.union([
+    t.literal('converting'),
+    t.literal('ready'),
+    t.literal('failed')
+  ]),
+  created_at: t.string
+});
+
+// Extract the static type from codec
+export type VideoMetadata = t.TypeOf<typeof VideoMetadataCodec>;
+
+// Type-safe validation helper
+function validateVideoMetadata(data: unknown): VideoMetadata | null {
+  const result = VideoMetadataCodec.decode(data);
+  return pipe(result, fold(() => null, video => video));
 }
 
 class Database {
@@ -46,11 +64,12 @@ class Database {
   public async getVideoMetadata(videoId: string): Promise<VideoMetadata | null> {
     return new Promise((resolve, reject) => {
       const sql = 'SELECT * FROM videos WHERE id = ?';
-      this.db.get(sql, [videoId], (err, row: any) => {
+      this.db.get(sql, [videoId], (err, row: unknown) => {
         if (err) {
           reject(err);
         } else {
-          resolve(row || null);
+          const videoMetadata = validateVideoMetadata(row);
+          resolve(videoMetadata);
         }
       });
     });
@@ -59,11 +78,15 @@ class Database {
   public async listVideos(): Promise<VideoMetadata[]> {
     return new Promise((resolve, reject) => {
       const sql = 'SELECT * FROM videos ORDER BY created_at DESC';
-      this.db.all(sql, [], (err, rows: any[]) => {
+      this.db.all(sql, [], (err, rows: unknown[]) => {
         if (err) {
           reject(err);
         } else {
-          resolve(rows);
+          // Validate each row and filter out invalid ones
+          const validatedRows = rows
+            .map(row => validateVideoMetadata(row))
+            .filter((video): video is VideoMetadata => video !== null);
+          resolve(validatedRows);
         }
       });
     });
