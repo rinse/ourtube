@@ -90,7 +90,6 @@ videoplayer/
 CREATE TABLE videos (
   id TEXT PRIMARY KEY,              -- 動画ファイルのSHA256ハッシュ
   title TEXT NOT NULL,              -- 動画タイトル
-  folder TEXT NOT NULL,             -- 保存フォルダ (idと同じ)
   status TEXT DEFAULT 'ready',      -- converting|ready|failed
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

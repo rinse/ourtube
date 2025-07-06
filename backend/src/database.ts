@@ -9,7 +9,6 @@ import { PathReporter } from 'io-ts/PathReporter';
 export const VideoMetadataCodec = t.type({
   id: t.string,
   title: t.string,
-  folder: t.string,
   status: t.union([
     t.literal('converting'),
     t.literal('ready'),
@@ -46,7 +45,6 @@ class Database {
       CREATE TABLE IF NOT EXISTS videos (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
-        folder TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'converting',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
@@ -94,8 +92,8 @@ class Database {
 
   public async saveVideoMetadata(metadata: VideoMetadata): Promise<void> {
     return new Promise((resolve, reject) => {
-      const sql = 'INSERT OR REPLACE INTO videos (id, title, folder, status, created_at) VALUES (?, ?, ?, ?, ?)';
-      this.db.run(sql, [metadata.id, metadata.title, metadata.folder, metadata.status, metadata.created_at], (err) => {
+      const sql = 'INSERT OR REPLACE INTO videos (id, title, status, created_at) VALUES (?, ?, ?, ?)';
+      this.db.run(sql, [metadata.id, metadata.title, metadata.status, metadata.created_at], (err) => {
         if (err) {
           reject(err);
         } else {

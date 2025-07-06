@@ -65,7 +65,7 @@ app.get('/api/videos', async (req: Request, res: Response): Promise<void> => {
     const videos = await database.listVideos();
     const videoList: VideoItem[] = videos.map(video => {
       // Check if thumbnail exists
-      const thumbnailPath = path.join(__dirname, '..', 'videos', video.folder, 'thumbnail.png');
+      const thumbnailPath = path.join(__dirname, '..', 'videos', video.id, 'thumbnail.png');
       const hasThumbnail = fs.existsSync(thumbnailPath);
       
       return {
@@ -117,7 +117,7 @@ app.get('/api/videos/:videoid', async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const manifestPath = path.join(__dirname, '..', 'videos', video.folder, 'index.m3u8');
+    const manifestPath = path.join(__dirname, '..', 'videos', video.id, 'index.m3u8');
   
   if (!fs.existsSync(manifestPath)) {
     res.status(404).json({
@@ -164,7 +164,7 @@ app.get('/api/videos/:videoid/info', async (req: Request, res: Response): Promis
     }
 
     // Check if thumbnail exists
-    const thumbnailPath = path.join(__dirname, '..', 'videos', video.folder, 'thumbnail.png');
+    const thumbnailPath = path.join(__dirname, '..', 'videos', video.id, 'thumbnail.png');
     const hasThumbnail = fs.existsSync(thumbnailPath);
 
     res.json({
@@ -208,7 +208,7 @@ app.get('/api/videos/:videoid/:filename', async (req: Request, res: Response): P
     return;
   }
 
-  const filePath = path.join(__dirname, '..', 'videos', video.folder, filename);
+  const filePath = path.join(__dirname, '..', 'videos', video.id, filename);
   
   if (!fs.existsSync(filePath)) {
     res.status(404).json({
@@ -278,7 +278,6 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
     const metadata: VideoMetadata = {
       id: videoId,
       title: title,
-      folder: videoId,
       status: 'converting',
       created_at: new Date().toISOString()
     };
@@ -357,7 +356,7 @@ app.delete('/api/videos/:videoid', async (req: Request, res: Response): Promise<
     }
 
     // Delete video files
-    const videoDir = path.join(__dirname, '..', 'videos', video.folder);
+    const videoDir = path.join(__dirname, '..', 'videos', video.id);
     if (fs.existsSync(videoDir)) {
       fs.rmSync(videoDir, { recursive: true, force: true });
     }
