@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 interface Video {
   id: string;
@@ -132,10 +133,12 @@ export default function VideoList() {
           {/* Video Thumbnail */}
           <div className="w-full aspect-video bg-gradient-to-br from-gray-200 via-gray-300 to-gray-400 relative group">
             {video.hasThumbnail && video.thumbnailUrl ? (
-              <img 
+              <Image 
                 src={video.thumbnailUrl} 
                 alt={video.title}
-                className="w-full h-full object-cover"
+                className="object-cover"
+                fill
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                 onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
                   // Hide the broken image and show the fallback
                   e.currentTarget.style.display = 'none';
@@ -210,10 +213,12 @@ export default function VideoList() {
           {/* Video Thumbnail */}
           <div className="w-full aspect-video bg-gradient-to-br from-gray-200 via-gray-300 to-gray-400 relative group">
             {video.hasThumbnail && video.thumbnailUrl ? (
-              <img 
+              <Image 
                 src={video.thumbnailUrl}
                 alt={video.title}
-                className="w-full h-full object-cover"
+                className="object-cover"
+                fill
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
