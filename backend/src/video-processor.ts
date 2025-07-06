@@ -103,10 +103,16 @@ async function performConversion(job: ConversionJob): Promise<void> {
       
       // Clean up source file
       fs.unlinkSync(job.sourcePath);
+      
+      // Remove completed job from memory
+      conversionJobs.delete(job.videoId);
     } else {
       job.status = 'failed';
       job.error = `FFmpeg exited with code ${code}: ${errorOutput}`;
       console.error(job.error);
+      
+      // Remove failed job from memory
+      conversionJobs.delete(job.videoId);
     }
   });
   
@@ -114,6 +120,9 @@ async function performConversion(job: ConversionJob): Promise<void> {
     job.status = 'failed';
     job.error = error.message;
     console.error('FFmpeg error:', error);
+    
+    // Remove failed job from memory
+    conversionJobs.delete(job.videoId);
   });
 }
 
