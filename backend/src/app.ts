@@ -248,8 +248,9 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
       
       res.status(409).json({
         error: 'Video already exists',
-        message: 'This video has already been uploaded',
-        videoId: videoId
+        message: `This video has already been uploaded with the title: "${existingVideo.title}"`,
+        videoId: videoId,
+        existingTitle: existingVideo.title
       });
       return;
     }

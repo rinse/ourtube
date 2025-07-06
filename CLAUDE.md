@@ -23,15 +23,14 @@ videoplayer/
 │   │   ├── upload/      # Upload page
 │   │   └── videos/      # Video player pages
 │   └── next.config.ts   # API proxy configuration
-├── backend/           # Express.js API server
-│   ├── src/          # TypeScript source files
-│   │   ├── app.ts           # Main application
-│   │   ├── database.ts      # SQLite database layer
-│   │   └── video-processor.ts # Video conversion logic
-│   ├── uploads/      # Temporary upload storage
-│   ├── videos/       # Converted HLS video storage
-│   └── videos.db     # SQLite database file
-└── resources/        # Original video files (git-ignored)
+└── backend/           # Express.js API server
+    ├── src/          # TypeScript source files
+    │   ├── app.ts           # Main application
+    │   ├── database.ts      # SQLite database layer
+    │   └── video-processor.ts # Video conversion logic
+    ├── uploads/      # Temporary upload storage
+    ├── videos/       # Converted HLS video storage
+    └── videos.db     # SQLite database file
 
 ## Development Commands
 
