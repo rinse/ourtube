@@ -146,6 +146,7 @@ CREATE TABLE videos (
 - Mobile-optimized layout
 - Fullscreen support
 - Error recovery
+- **Unmuted auto-play by default** - Videos start playing automatically with sound enabled
 
 ## Common Tasks
 

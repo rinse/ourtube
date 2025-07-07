@@ -9,7 +9,7 @@ interface VideoPlayerProps {
   autoPlay?: boolean;
 }
 
-export default function VideoPlayer({ src, poster, autoPlay = false }: VideoPlayerProps) {
+export default function VideoPlayer({ src, poster, autoPlay = true }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -138,7 +138,6 @@ export default function VideoPlayer({ src, poster, autoPlay = false }: VideoPlay
           poster={poster}
           controls
           playsInline
-          muted
           autoPlay={autoPlay}
           onClick={handleFullscreenToggle}
         />
