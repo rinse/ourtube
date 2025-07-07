@@ -3,15 +3,13 @@ import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import { database, VideoMetadata } from './database';
-import { generateVideoId, convertToHLS, getConversionStatus, getAllConversionJobs } from './video-processor';
+import { generateVideoId, convertToHLS } from './video-processor';
 import {
   ApiErrorResponse,
   ApiStatusResponse,
   VideoListResponse,
   VideoInfoResponse,
   UploadResponse,
-  ConversionStatus,
-  AllConversionStatusResponse,
   UpdateVideoResponse,
   DeleteVideoResponse,
   VideoItem
@@ -297,27 +295,6 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
   }
 });
 
-// Get conversion status endpoint
-app.get('/api/conversion-status/:videoid', (req: Request, res: Response) => {
-  const { videoid } = req.params;
-  const status = getConversionStatus(videoid);
-  
-  if (!status) {
-    res.status(404).json({
-      error: 'Not found',
-      message: 'No conversion job found for this video ID'
-    } satisfies ApiErrorResponse);
-    return;
-  }
-  
-  res.json(status satisfies ConversionStatus);
-});
-
-// Get all conversion jobs
-app.get('/api/conversion-status', (req: Request, res: Response) => {
-  const jobs = getAllConversionJobs();
-  res.json({ jobs } satisfies AllConversionStatusResponse);
-});
 
 // Delete video endpoint
 app.delete('/api/videos/:videoid', async (req: Request, res: Response): Promise<void> => {

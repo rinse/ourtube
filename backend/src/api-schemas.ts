@@ -52,27 +52,6 @@ export const UploadResponseCodec = t.type({
   status: t.literal('converting')
 });
 
-// Conversion status response
-export const ConversionStatusCodec = t.intersection([
-  t.type({
-    videoId: t.string,
-    sourcePath: t.string,
-    targetPath: t.string,
-    status: t.union([
-      t.literal('pending'),
-      t.literal('converting'),
-      t.literal('completed'),
-      t.literal('failed')
-    ])
-  }),
-  t.partial({
-    error: t.string
-  })
-]);
-
-export const AllConversionStatusResponseCodec = t.type({
-  jobs: t.array(ConversionStatusCodec)
-});
 
 // Update video response
 export const UpdateVideoResponseCodec = t.type({
@@ -91,7 +70,5 @@ export type VideoItem = t.TypeOf<typeof VideoItemCodec>;
 export type VideoListResponse = t.TypeOf<typeof VideoListResponseCodec>;
 export type VideoInfoResponse = t.TypeOf<typeof VideoInfoResponseCodec>;
 export type UploadResponse = t.TypeOf<typeof UploadResponseCodec>;
-export type ConversionStatus = t.TypeOf<typeof ConversionStatusCodec>;
-export type AllConversionStatusResponse = t.TypeOf<typeof AllConversionStatusResponseCodec>;
 export type UpdateVideoResponse = t.TypeOf<typeof UpdateVideoResponseCodec>;
 export type DeleteVideoResponse = t.TypeOf<typeof DeleteVideoResponseCodec>;

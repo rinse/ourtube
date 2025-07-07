@@ -4,15 +4,6 @@ import * as path from 'path';
 import { spawn } from 'child_process';
 import { database } from './database';
 
-export interface ConversionJob {
-  videoId: string;
-  sourcePath: string;
-  targetPath: string;
-  status: 'pending' | 'converting' | 'completed' | 'failed';
-  error?: string;
-}
-
-const conversionJobs = new Map<string, ConversionJob>();
 
 export function generateVideoId(filePath: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -25,42 +16,24 @@ export function generateVideoId(filePath: string): Promise<string> {
   });
 }
 
-export function getConversionStatus(videoId: string): ConversionJob | undefined {
-  return conversionJobs.get(videoId);
-}
-
-export function getAllConversionJobs(): ConversionJob[] {
-  return Array.from(conversionJobs.values());
-}
 
 export async function convertToHLS(
   videoId: string,
   sourcePath: string,
   targetDir: string
 ): Promise<void> {
-  const job: ConversionJob = {
-    videoId,
-    sourcePath,
-    targetPath: targetDir,
-    status: 'pending'
-  };
-  
-  conversionJobs.set(videoId, job);
-  
   // Create target directory
   fs.mkdirSync(targetDir, { recursive: true });
   
   // Start conversion in background
-  setImmediate(() => performConversion(job));
+  setImmediate(() => performConversion(videoId, sourcePath, targetDir));
 }
 
-async function performConversion(job: ConversionJob): Promise<void> {
-  job.status = 'converting';
-  
-  const outputPath = path.join(job.targetPath, 'index.m3u8');
+async function performConversion(videoId: string, sourcePath: string, targetDir: string): Promise<void> {
+  const outputPath = path.join(targetDir, 'index.m3u8');
   
   const ffmpeg = spawn('ffmpeg', [
-    '-i', job.sourcePath,
+    '-i', sourcePath,
     '-c:v', 'libx264',
     '-c:a', 'aac',
     '-hls_time', '10',
@@ -79,12 +52,10 @@ async function performConversion(job: ConversionJob): Promise<void> {
   
   ffmpeg.on('close', async (code) => {
     if (code === 0) {
-      job.status = 'completed';
-      
       // Generate thumbnail after successful HLS conversion
       try {
-        await generateThumbnail(job.sourcePath, job.targetPath);
-        console.log(`Thumbnail generated for video ${job.videoId}`);
+        await generateThumbnail(sourcePath, targetDir);
+        console.log(`Thumbnail generated for video ${videoId}`);
       } catch (error) {
         console.error('Failed to generate thumbnail:', error);
         // Continue even if thumbnail generation fails
@@ -92,7 +63,7 @@ async function performConversion(job: ConversionJob): Promise<void> {
       
       // Update video status in database
       try {
-        const videoMetadata = await database.getVideoMetadata(job.videoId);
+        const videoMetadata = await database.getVideoMetadata(videoId);
         if (videoMetadata) {
           videoMetadata.status = 'ready';
           await database.saveVideoMetadata(videoMetadata);
@@ -102,27 +73,39 @@ async function performConversion(job: ConversionJob): Promise<void> {
       }
       
       // Clean up source file
-      fs.unlinkSync(job.sourcePath);
+      fs.unlinkSync(sourcePath);
       
-      // Remove completed job from memory
-      conversionJobs.delete(job.videoId);
+      console.log(`Video conversion completed for ${videoId}`);
     } else {
-      job.status = 'failed';
-      job.error = `FFmpeg exited with code ${code}: ${errorOutput}`;
-      console.error(job.error);
+      const errorMessage = `FFmpeg exited with code ${code}: ${errorOutput}`;
+      console.error(errorMessage);
       
-      // Remove failed job from memory
-      conversionJobs.delete(job.videoId);
+      // Update video status to failed in database
+      try {
+        const videoMetadata = await database.getVideoMetadata(videoId);
+        if (videoMetadata) {
+          videoMetadata.status = 'failed';
+          await database.saveVideoMetadata(videoMetadata);
+        }
+      } catch (error) {
+        console.error('Failed to update video status:', error);
+      }
     }
   });
   
-  ffmpeg.on('error', (error) => {
-    job.status = 'failed';
-    job.error = error.message;
+  ffmpeg.on('error', async (error) => {
     console.error('FFmpeg error:', error);
     
-    // Remove failed job from memory
-    conversionJobs.delete(job.videoId);
+    // Update video status to failed in database
+    try {
+      const videoMetadata = await database.getVideoMetadata(videoId);
+      if (videoMetadata) {
+        videoMetadata.status = 'failed';
+        await database.saveVideoMetadata(videoMetadata);
+      }
+    } catch (error) {
+      console.error('Failed to update video status:', error);
+    }
   });
 }
 
