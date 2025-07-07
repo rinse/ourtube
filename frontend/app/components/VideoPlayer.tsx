@@ -6,9 +6,10 @@ import Hls from 'hls.js';
 interface VideoPlayerProps {
   src: string;
   poster?: string;
+  autoPlay?: boolean;
 }
 
-export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
+export default function VideoPlayer({ src, poster, autoPlay = false }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -49,12 +50,28 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           setError(null);
+          // Auto-play if enabled
+          if (autoPlay) {
+            video.play().catch((err) => {
+              console.log('Auto-play failed:', err);
+              // Auto-play might fail due to browser policies, which is fine
+            });
+          }
         });
 
         hls.loadSource(src);
         hls.attachMedia(video);
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = src;
+        // Auto-play if enabled (for native HLS support)
+        if (autoPlay) {
+          video.addEventListener('loadedmetadata', () => {
+            video.play().catch((err) => {
+              console.log('Auto-play failed:', err);
+              // Auto-play might fail due to browser policies, which is fine
+            });
+          });
+        }
       } else {
         setError('HLS is not supported in this browser');
       }
@@ -68,7 +85,7 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
         hlsRef.current = null;
       }
     };
-  }, [src]);
+  }, [src, autoPlay]);
 
   const handleFullscreenToggle = async () => {
     const video = videoRef.current;
@@ -122,6 +139,7 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
           controls
           playsInline
           muted
+          autoPlay={autoPlay}
           onClick={handleFullscreenToggle}
         />
         {error && (

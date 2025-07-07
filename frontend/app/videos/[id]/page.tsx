@@ -212,7 +212,7 @@ export default function VideoPage({ params }: PageProps) {
           </div>
           
           {!loading && !error && videoId && (
-            <VideoPlayer src={`/api/videos/${videoId}/index.m3u8`} />
+            <VideoPlayer src={`/api/videos/${videoId}/index.m3u8`} autoPlay={true} />
           )}
           
           <div className="p-4">
