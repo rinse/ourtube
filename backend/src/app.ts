@@ -71,7 +71,7 @@ app.get('/api/videos', async (req: Request, res: Response): Promise<void> => {
       return {
         id: video.id,
         title: video.title,
-        hlsUrl: `/api/videos/${video.id}`,
+        hlsUrl: `/api/videos/${video.id}/index.m3u8`,
         status: video.status,
         hasThumbnail: hasThumbnail,
         thumbnailUrl: hasThumbnail ? `/api/videos/${video.id}/thumbnail.png` : null
@@ -93,8 +93,44 @@ app.get('/api/videos', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-// Serve HLS manifest files (.m3u8)
+// Get video metadata
 app.get('/api/videos/:videoid', async (req: Request, res: Response): Promise<void> => {
+  const { videoid } = req.params;
+  
+  try {
+    const video = await database.getVideoMetadata(videoid);
+    
+    if (!video) {
+      res.status(404).json({
+        error: 'Video not found',
+        message: `Video with ID ${videoid} does not exist`
+      });
+      return;
+    }
+
+    // Check if thumbnail exists
+    const thumbnailPath = path.join(__dirname, '..', 'videos', video.id, 'thumbnail.png');
+    const hasThumbnail = fs.existsSync(thumbnailPath);
+
+    res.json({
+      id: video.id,
+      title: video.title,
+      hlsUrl: `/api/videos/${video.id}/index.m3u8`,
+      status: video.status,
+      hasThumbnail: hasThumbnail,
+      thumbnailUrl: hasThumbnail ? `/api/videos/${video.id}/thumbnail.png` : null
+    });
+  } catch (error) {
+    console.error('Error fetching video info:', error);
+    res.status(500).json({
+      error: 'Database error',
+      message: 'Failed to fetch video information'
+    });
+  }
+});
+
+// Serve HLS manifest files (.m3u8)
+app.get('/api/videos/:videoid/index.m3u8', async (req: Request, res: Response): Promise<void> => {
   const { videoid } = req.params;
   
   try {
@@ -119,64 +155,22 @@ app.get('/api/videos/:videoid', async (req: Request, res: Response): Promise<voi
 
     const manifestPath = path.join(__dirname, '..', 'videos', video.id, 'index.m3u8');
   
-  if (!fs.existsSync(manifestPath)) {
-    res.status(404).json({
-      error: 'Video file not found',
-      message: `HLS manifest file for video ${videoid} does not exist`
-    });
-    return;
-  }
-
-  // Read the manifest file and modify segment URLs to include video ID
-  const manifestContent = fs.readFileSync(manifestPath, 'utf8');
-  
-  // Replace segment filenames with paths that include the video ID
-  const modifiedManifest = manifestContent.replace(
-    /^([^#\s]+\.(ts|vtt|m3u8))$/gm,
-    `${videoid}/$1`
-  );
-  
-    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.send(modifiedManifest);
-  } catch (error) {
-    console.error('Error serving manifest:', error);
-    res.status(500).json({
-      error: 'Database error',
-      message: 'Failed to fetch video information'
-    });
-  }
-});
-
-// Get video metadata
-app.get('/api/videos/:videoid/info', async (req: Request, res: Response): Promise<void> => {
-  const { videoid } = req.params;
-  
-  try {
-    const video = await database.getVideoMetadata(videoid);
-    
-    if (!video) {
+    if (!fs.existsSync(manifestPath)) {
       res.status(404).json({
-        error: 'Video not found',
-        message: `Video with ID ${videoid} does not exist`
+        error: 'Video file not found',
+        message: `HLS manifest file for video ${videoid} does not exist`
       });
       return;
     }
 
-    // Check if thumbnail exists
-    const thumbnailPath = path.join(__dirname, '..', 'videos', video.id, 'thumbnail.png');
-    const hasThumbnail = fs.existsSync(thumbnailPath);
-
-    res.json({
-      id: video.id,
-      title: video.title,
-      hlsUrl: `/api/videos/${video.id}`,
-      status: video.status,
-      hasThumbnail: hasThumbnail,
-      thumbnailUrl: hasThumbnail ? `/api/videos/${video.id}/thumbnail.png` : null
-    });
+    // Read and serve the manifest file directly
+    const manifestContent = fs.readFileSync(manifestPath, 'utf8');
+    
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(manifestContent);
   } catch (error) {
-    console.error('Error fetching video info:', error);
+    console.error('Error serving manifest:', error);
     res.status(500).json({
       error: 'Database error',
       message: 'Failed to fetch video information'

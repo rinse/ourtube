@@ -99,9 +99,9 @@ CREATE TABLE videos (
 
 ### 動画操作
 - `GET /api/videos` - 全動画一覧（メタデータ付き）
-- `GET /api/videos/:videoid` - HLSマニフェストファイル
+- `GET /api/videos/:videoid` - 動画メタデータ
+- `GET /api/videos/:videoid/index.m3u8` - HLSマニフェストファイル
 - `GET /api/videos/:videoid/:filename` - HLSセグメント
-- `GET /api/videos/:videoid/info` - 動画メタデータ
 - `DELETE /api/videos/:videoid` - 動画削除
 - `PUT /api/videos/:videoid` - 動画タイトル更新
 

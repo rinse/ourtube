@@ -34,7 +34,7 @@ export default function VideoPage({ params }: PageProps) {
       setLoading(true);
       setError(null);
 
-      fetch(`/api/videos/${id}/info`)
+      fetch(`/api/videos/${id}`)
         .then(res => {
           if (!res.ok) {
             throw new Error('Failed to fetch video info');
@@ -212,7 +212,7 @@ export default function VideoPage({ params }: PageProps) {
           </div>
           
           {!loading && !error && videoId && (
-            <VideoPlayer src={`/api/videos/${videoId}`} />
+            <VideoPlayer src={`/api/videos/${videoId}/index.m3u8`} />
           )}
           
           <div className="p-4">
