@@ -35,49 +35,53 @@ export const VideoListResponseCodec = t.type({
 export const VideoInfoResponseCodec = t.type({
   id: t.string,
   title: t.string,
-  folder: t.string,
+  hlsUrl: t.string,
   status: t.union([
     t.literal('converting'),
     t.literal('ready'),
     t.literal('failed')
   ]),
-  created_at: t.string
+  thumbnailUrl: t.union([t.string, t.null])
 });
 
 // Upload response
 export const UploadResponseCodec = t.type({
+  message: t.string,
   videoId: t.string,
   title: t.string,
   status: t.literal('converting')
 });
 
 // Conversion status response
-export const ConversionStatusCodec = t.type({
-  videoId: t.string,
-  status: t.union([
-    t.literal('converting'),
-    t.literal('ready'),
-    t.literal('failed')
-  ]),
-  error: t.union([t.string, t.undefined])
-});
+export const ConversionStatusCodec = t.intersection([
+  t.type({
+    videoId: t.string,
+    sourcePath: t.string,
+    targetPath: t.string,
+    status: t.union([
+      t.literal('pending'),
+      t.literal('converting'),
+      t.literal('completed'),
+      t.literal('failed')
+    ])
+  }),
+  t.partial({
+    error: t.string
+  })
+]);
 
 export const AllConversionStatusResponseCodec = t.type({
-  conversions: t.array(ConversionStatusCodec),
-  count: t.number
+  jobs: t.array(ConversionStatusCodec)
 });
 
 // Update video response
 export const UpdateVideoResponseCodec = t.type({
-  message: t.string,
-  id: t.string,
-  newTitle: t.union([t.string, t.undefined])
+  message: t.string
 });
 
 // Delete video response
 export const DeleteVideoResponseCodec = t.type({
-  message: t.string,
-  id: t.string
+  message: t.string
 });
 
 // Extract static types

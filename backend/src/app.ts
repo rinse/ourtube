@@ -103,7 +103,7 @@ app.get('/api/videos/:videoid', async (req: Request, res: Response): Promise<voi
       res.status(404).json({
         error: 'Video not found',
         message: `Video with ID ${videoid} does not exist`
-      });
+      } satisfies ApiErrorResponse);
       return;
     }
 
@@ -117,7 +117,7 @@ app.get('/api/videos/:videoid', async (req: Request, res: Response): Promise<voi
       hlsUrl: `/api/videos/${video.id}/index.m3u8`,
       status: video.status,
       thumbnailUrl: hasThumbnail ? `/api/videos/${video.id}/thumbnail.png` : null
-    });
+    } satisfies VideoInfoResponse);
   } catch (error) {
     console.error('Error fetching video info:', error);
     res.status(500).json({
@@ -138,16 +138,15 @@ app.get('/api/videos/:videoid/index.m3u8', async (req: Request, res: Response): 
       res.status(404).json({
         error: 'Video not found',
         message: `Video with ID ${videoid} does not exist`
-      });
+      } satisfies ApiErrorResponse);
       return;
     }
 
     if (video.status !== 'ready') {
       res.status(503).json({
         error: 'Video not ready',
-        message: `Video is still ${video.status}`,
-        status: video.status
-      });
+        message: `Video is still ${video.status}`
+      } satisfies ApiErrorResponse);
       return;
     }
 
@@ -157,7 +156,7 @@ app.get('/api/videos/:videoid/index.m3u8', async (req: Request, res: Response): 
       res.status(404).json({
         error: 'Video file not found',
         message: `HLS manifest file for video ${videoid} does not exist`
-      });
+      } satisfies ApiErrorResponse);
       return;
     }
 
@@ -187,7 +186,7 @@ app.get('/api/videos/:videoid/:filename', async (req: Request, res: Response): P
       res.status(404).json({
         error: 'Video not found',
         message: `Video with ID ${videoid} does not exist`
-      });
+      } satisfies ApiErrorResponse);
       return;
     }
 
@@ -196,7 +195,7 @@ app.get('/api/videos/:videoid/:filename', async (req: Request, res: Response): P
     res.status(400).json({
       error: 'Invalid file type',
       message: 'Only .ts, .vtt, .m3u8 files and thumbnail.png are allowed'
-    });
+    } satisfies ApiErrorResponse);
     return;
   }
 
@@ -206,7 +205,7 @@ app.get('/api/videos/:videoid/:filename', async (req: Request, res: Response): P
     res.status(404).json({
       error: 'File not found',
       message: `File ${filename} for video ${videoid} does not exist`
-    });
+    } satisfies ApiErrorResponse);
     return;
   }
 
@@ -239,7 +238,7 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
       res.status(400).json({
         error: 'No file uploaded',
         message: 'Please provide a video file'
-      });
+      } satisfies ApiErrorResponse);
       return;
     }
 
@@ -256,10 +255,8 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
       
       res.status(409).json({
         error: 'Video already exists',
-        message: `This video has already been uploaded with the title: "${existingVideo.title}"`,
-        videoId: videoId,
-        existingTitle: existingVideo.title
-      });
+        message: `This video has already been uploaded with the title: "${existingVideo.title}"`
+      } satisfies ApiErrorResponse);
       return;
     }
     
@@ -284,7 +281,7 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
       videoId: videoId,
       title: title,
       status: 'converting'
-    });
+    } satisfies UploadResponse);
   } catch (error) {
     console.error('Upload error:', error);
     
@@ -296,7 +293,7 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
     res.status(500).json({
       error: 'Upload failed',
       message: error instanceof Error ? error.message : 'Failed to process upload'
-    });
+    } satisfies ApiErrorResponse);
   }
 });
 
@@ -309,17 +306,17 @@ app.get('/api/conversion-status/:videoid', (req: Request, res: Response) => {
     res.status(404).json({
       error: 'Not found',
       message: 'No conversion job found for this video ID'
-    });
+    } satisfies ApiErrorResponse);
     return;
   }
   
-  res.json(status);
+  res.json(status satisfies ConversionStatus);
 });
 
 // Get all conversion jobs
 app.get('/api/conversion-status', (req: Request, res: Response) => {
   const jobs = getAllConversionJobs();
-  res.json({ jobs });
+  res.json({ jobs } satisfies AllConversionStatusResponse);
 });
 
 // Delete video endpoint
@@ -331,9 +328,9 @@ app.delete('/api/videos/:videoid', async (req: Request, res: Response): Promise<
     const video = await database.getVideoMetadata(videoid);
     if (!video) {
       res.status(404).json({
-        message: 'failure',
-        reason: 'Video not found'
-      });
+        error: 'Video not found',
+        message: 'Video not found'
+      } satisfies ApiErrorResponse);
       return;
     }
 
@@ -341,9 +338,9 @@ app.delete('/api/videos/:videoid', async (req: Request, res: Response): Promise<
     const dbDeleted = await database.deleteVideo(videoid);
     if (!dbDeleted) {
       res.status(500).json({
-        message: 'failure',
-        reason: 'Failed to delete video from database'
-      });
+        error: 'Database error',
+        message: 'Failed to delete video from database'
+      } satisfies ApiErrorResponse);
       return;
     }
 
@@ -353,13 +350,13 @@ app.delete('/api/videos/:videoid', async (req: Request, res: Response): Promise<
       fs.rmSync(videoDir, { recursive: true, force: true });
     }
 
-    res.json({ message: 'ok' });
+    res.json({ message: 'ok' } satisfies DeleteVideoResponse);
   } catch (error) {
     console.error('Delete error:', error);
     res.status(500).json({
-      message: 'failure',
-      reason: error instanceof Error ? error.message : 'Failed to delete video'
-    });
+      error: 'Delete failed',
+      message: error instanceof Error ? error.message : 'Failed to delete video'
+    } satisfies ApiErrorResponse);
   }
 });
 
@@ -372,9 +369,9 @@ app.put('/api/videos/:videoid', async (req: Request, res: Response): Promise<voi
     // Validate input
     if (!title || typeof title !== 'string') {
       res.status(400).json({
-        message: 'failure',
-        reason: 'Title is required and must be a string'
-      });
+        error: 'Invalid input',
+        message: 'Title is required and must be a string'
+      } satisfies ApiErrorResponse);
       return;
     }
 
@@ -382,9 +379,9 @@ app.put('/api/videos/:videoid', async (req: Request, res: Response): Promise<voi
     const video = await database.getVideoMetadata(videoid);
     if (!video) {
       res.status(404).json({
-        message: 'failure',
-        reason: 'Video not found'
-      });
+        error: 'Video not found',
+        message: 'Video not found'
+      } satisfies ApiErrorResponse);
       return;
     }
 
@@ -392,19 +389,19 @@ app.put('/api/videos/:videoid', async (req: Request, res: Response): Promise<voi
     const updated = await database.updateVideoTitle(videoid, title);
     if (!updated) {
       res.status(500).json({
-        message: 'failure',
-        reason: 'Failed to update video title'
-      });
+        error: 'Database error',
+        message: 'Failed to update video title'
+      } satisfies ApiErrorResponse);
       return;
     }
 
-    res.json({ message: 'ok' });
+    res.json({ message: 'ok' } satisfies UpdateVideoResponse);
   } catch (error) {
     console.error('Update error:', error);
     res.status(500).json({
-      message: 'failure',
-      reason: error instanceof Error ? error.message : 'Failed to update video title'
-    });
+      error: 'Update failed',
+      message: error instanceof Error ? error.message : 'Failed to update video title'
+    } satisfies ApiErrorResponse);
   }
 });
 
@@ -412,7 +409,7 @@ app.use((req: Request, res: Response) => {
   res.status(404).json({
     error: 'Not Found',
     message: `Route ${req.method} ${req.path} not found`
-  });
+  } satisfies ApiErrorResponse);
 });
 
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
@@ -420,7 +417,7 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   res.status(500).json({
     error: 'Internal Server Error',
     message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
-  });
+  } satisfies ApiErrorResponse);
 });
 
 app.listen(PORT, () => {
