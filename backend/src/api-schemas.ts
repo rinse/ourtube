@@ -23,7 +23,6 @@ export const VideoItemCodec = t.type({
     t.literal('ready'),
     t.literal('failed')
   ]),
-  hasThumbnail: t.union([t.boolean, t.undefined]),
   thumbnailUrl: t.union([t.string, t.null])
 });
 

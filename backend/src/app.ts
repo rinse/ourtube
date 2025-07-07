@@ -73,7 +73,6 @@ app.get('/api/videos', async (req: Request, res: Response): Promise<void> => {
         title: video.title,
         hlsUrl: `/api/videos/${video.id}/index.m3u8`,
         status: video.status,
-        hasThumbnail: hasThumbnail,
         thumbnailUrl: hasThumbnail ? `/api/videos/${video.id}/thumbnail.png` : null
       };
     });
@@ -117,7 +116,6 @@ app.get('/api/videos/:videoid', async (req: Request, res: Response): Promise<voi
       title: video.title,
       hlsUrl: `/api/videos/${video.id}/index.m3u8`,
       status: video.status,
-      hasThumbnail: hasThumbnail,
       thumbnailUrl: hasThumbnail ? `/api/videos/${video.id}/thumbnail.png` : null
     });
   } catch (error) {
