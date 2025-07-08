@@ -118,6 +118,23 @@ export default function VideoPlayer({ src, poster, autoPlay = true }: VideoPlaye
     }
   };
 
+  const handleClick = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.paused) {
+      video.play().catch((err) => {
+        console.log('Play failed:', err);
+      });
+    } else {
+      video.pause();
+    }
+  };
+
+  const handleDoubleClick = () => {
+    handleFullscreenToggle();
+  };
+
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
@@ -139,10 +156,21 @@ export default function VideoPlayer({ src, poster, autoPlay = true }: VideoPlaye
           controls
           playsInline
           autoPlay={autoPlay}
-          onClick={handleFullscreenToggle}
+        />
+        {/* Invisible overlay to capture clicks */}
+        <div 
+          className="absolute inset-0 z-10"
+          onClick={handleClick}
+          onDoubleClick={handleDoubleClick}
+          style={{ 
+            // Make the overlay invisible but still capture clicks
+            background: 'transparent',
+            // Don't capture clicks on the bottom 48px where controls are
+            clipPath: 'inset(0 0 48px 0)'
+          }}
         />
         {error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-75">
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-75 z-20">
             <div className="text-white text-center p-4">
               <p className="text-lg font-semibold mb-2">Error</p>
               <p>{error}</p>
@@ -151,7 +179,7 @@ export default function VideoPlayer({ src, poster, autoPlay = true }: VideoPlaye
         )}
         <button
           onClick={handleFullscreenToggle}
-          className="absolute bottom-4 right-4 bg-black bg-opacity-50 text-white p-2 rounded-lg hover:bg-opacity-75 transition-opacity"
+          className="absolute bottom-4 right-4 bg-black bg-opacity-50 text-white p-2 rounded-lg hover:bg-opacity-75 transition-opacity z-20"
           aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
         >
           {isFullscreen ? (
