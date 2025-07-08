@@ -3,7 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import { database, VideoMetadata } from './database';
-import { generateVideoId, convertToHLS } from './video-processor';
+import { generateVideoId } from './video-processor';
+import { getVideoStorage } from './storage';
 import {
   ApiErrorResponse,
   ApiStatusResponse,
@@ -17,6 +18,7 @@ import {
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+const storage = getVideoStorage();
 
 // Configure multer for video uploads
 const upload = multer({
@@ -61,10 +63,9 @@ app.get('/api/health', (req: Request, res: Response) => {
 app.get('/api/videos', async (req: Request, res: Response): Promise<void> => {
   try {
     const videos = await database.listVideos();
-    const videoList: VideoItem[] = videos.map(video => {
+    const videoList: VideoItem[] = await Promise.all(videos.map(async video => {
       // Check if thumbnail exists
-      const thumbnailPath = path.join(__dirname, '..', 'videos', video.id, 'thumbnail.png');
-      const hasThumbnail = fs.existsSync(thumbnailPath);
+      const hasThumbnail = await storage.existsFile(video.id, 'thumbnail.png');
       
       return {
         id: video.id,
@@ -73,7 +74,7 @@ app.get('/api/videos', async (req: Request, res: Response): Promise<void> => {
         status: video.status,
         thumbnailUrl: hasThumbnail ? `/api/videos/${video.id}/thumbnail.png` : null
       };
-    });
+    }));
     
     const response: VideoListResponse = {
       videos: videoList,
@@ -106,8 +107,7 @@ app.get('/api/videos/:videoid', async (req: Request, res: Response): Promise<voi
     }
 
     // Check if thumbnail exists
-    const thumbnailPath = path.join(__dirname, '..', 'videos', video.id, 'thumbnail.png');
-    const hasThumbnail = fs.existsSync(thumbnailPath);
+    const hasThumbnail = await storage.existsFile(video.id, 'thumbnail.png');
 
     res.json({
       id: video.id,
@@ -148,22 +148,26 @@ app.get('/api/videos/:videoid/index.m3u8', async (req: Request, res: Response): 
       return;
     }
 
-    const manifestPath = path.join(__dirname, '..', 'videos', video.id, 'index.m3u8');
-  
-    if (!fs.existsSync(manifestPath)) {
+    try {
+      const { stream, mime } = await storage.getFile(video.id, 'index.m3u8');
+      
+      // Read the manifest content
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        chunks.push(chunk);
+      }
+      const manifestContent = Buffer.concat(chunks).toString('utf8');
+      
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Cache-Control', 'no-cache');
+      res.send(manifestContent);
+    } catch (error) {
       res.status(404).json({
         error: 'Video file not found',
         message: `HLS manifest file for video ${videoid} does not exist`
       } satisfies ApiErrorResponse);
       return;
     }
-
-    // Read and serve the manifest file directly
-    const manifestContent = fs.readFileSync(manifestPath, 'utf8');
-    
-    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.send(manifestContent);
   } catch (error) {
     console.error('Error serving manifest:', error);
     res.status(500).json({
@@ -188,38 +192,28 @@ app.get('/api/videos/:videoid/:filename', async (req: Request, res: Response): P
       return;
     }
 
-  // Validate file extension for security
-  if (!filename.endsWith('.ts') && !filename.endsWith('.vtt') && !filename.endsWith('.m3u8') && filename !== 'thumbnail.png') {
-    res.status(400).json({
-      error: 'Invalid file type',
-      message: 'Only .ts, .vtt, .m3u8 files and thumbnail.png are allowed'
-    } satisfies ApiErrorResponse);
-    return;
-  }
+    // Validate file extension for security
+    if (!filename.endsWith('.ts') && !filename.endsWith('.vtt') && !filename.endsWith('.m3u8') && filename !== 'thumbnail.png') {
+      res.status(400).json({
+        error: 'Invalid file type',
+        message: 'Only .ts, .vtt, .m3u8 files and thumbnail.png are allowed'
+      } satisfies ApiErrorResponse);
+      return;
+    }
 
-  const filePath = path.join(__dirname, '..', 'videos', video.id, filename);
-  
-  if (!fs.existsSync(filePath)) {
-    res.status(404).json({
-      error: 'File not found',
-      message: `File ${filename} for video ${videoid} does not exist`
-    } satisfies ApiErrorResponse);
-    return;
-  }
-
-  // Set appropriate content type
-  if (filename.endsWith('.ts')) {
-    res.setHeader('Content-Type', 'video/mp2t');
-  } else if (filename.endsWith('.vtt')) {
-    res.setHeader('Content-Type', 'text/vtt');
-  } else if (filename.endsWith('.m3u8')) {
-    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-  } else if (filename === 'thumbnail.png') {
-    res.setHeader('Content-Type', 'image/png');
-  }
-  
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    res.sendFile(filePath);
+    try {
+      const { stream, mime } = await storage.getFile(video.id, filename);
+      
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      stream.pipe(res);
+    } catch (error) {
+      res.status(404).json({
+        error: 'File not found',
+        message: `File ${filename} for video ${videoid} does not exist`
+      } satisfies ApiErrorResponse);
+      return;
+    }
   } catch (error) {
     console.error('Error serving file:', error);
     res.status(500).json({
@@ -258,9 +252,6 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
       return;
     }
     
-    // Create video directory
-    const videoDir = path.join(__dirname, '..', 'videos', videoId);
-    
     // Save video metadata
     const metadata: VideoMetadata = {
       id: videoId,
@@ -272,7 +263,7 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
     await database.saveVideoMetadata(metadata);
     
     // Start HLS conversion in background
-    convertToHLS(videoId, req.file.path, videoDir);
+    storage.create(videoId, req.file.path);
     
     res.json({
       message: 'Video uploaded successfully',
@@ -322,9 +313,9 @@ app.delete('/api/videos/:videoid', async (req: Request, res: Response): Promise<
     }
 
     // Delete video files
-    const videoDir = path.join(__dirname, '..', 'videos', video.id);
-    if (fs.existsSync(videoDir)) {
-      fs.rmSync(videoDir, { recursive: true, force: true });
+    const deleted = await storage.delete(video.id);
+    if (!deleted) {
+      console.warn(`Failed to delete video directory for ${video.id}`);
     }
 
     res.json({ message: 'ok' } satisfies DeleteVideoResponse);
