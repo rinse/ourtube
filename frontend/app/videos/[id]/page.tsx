@@ -132,19 +132,25 @@ export default function VideoPage({ params }: PageProps) {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-          <div className="p-4 border-b">
-            {loading ? (
+          {loading ? (
+            <div className="p-4">
               <div className="animate-pulse">
                 <div className="h-6 bg-gray-200 rounded w-3/4"></div>
                 <div className="h-4 bg-gray-200 rounded w-1/2 mt-2"></div>
               </div>
-            ) : error ? (
-              <div className="text-red-600">
-                <h2 className="text-xl font-semibold">Error</h2>
-                <p className="text-sm mt-1">{error}</p>
-              </div>
-            ) : (
-              <>
+            </div>
+          ) : error ? (
+            <div className="p-4 text-red-600">
+              <h2 className="text-xl font-semibold">Error</h2>
+              <p className="text-sm mt-1">{error}</p>
+            </div>
+          ) : (
+            <>
+              {videoId && (
+                <VideoPlayer src={`/api/videos/${videoId}/index.m3u8`} autoPlay={true} />
+              )}
+              
+              <div className="p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex-1 mr-4">
                     {isEditing ? (
@@ -206,27 +212,9 @@ export default function VideoPage({ params }: PageProps) {
                     Delete
                   </button>
                 </div>
-                <p className="text-gray-600 text-sm mt-1">HLS streaming with mobile support</p>
-              </>
-            )}
-          </div>
-          
-          {!loading && !error && videoId && (
-            <VideoPlayer src={`/api/videos/${videoId}/index.m3u8`} autoPlay={true} />
+              </div>
+            </>
           )}
-          
-          <div className="p-4">
-            <h3 className="font-semibold text-gray-800 mb-2">Video Details</h3>
-            <p className="text-gray-600 text-sm">
-              This HLS video stream supports:
-            </p>
-            <ul className="mt-2 text-sm text-gray-600 list-disc list-inside">
-              <li>HLS adaptive streaming</li>
-              <li>Mobile portrait layout</li>
-              <li>Fullscreen with landscape orientation</li>
-              <li>Native browser controls</li>
-            </ul>
-          </div>
         </div>
       </main>
 
