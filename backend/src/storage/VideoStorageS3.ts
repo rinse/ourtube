@@ -22,6 +22,7 @@ export class VideoStorageS3 implements VideoStorage {
   private s3Client: S3Client;
   private bucketName: string;
   private tempDir: string;
+  private manifestCache: Map<string, { content: Buffer; mime: string }>;
 
   constructor(bucketName: string, region: string) {
     this.bucketName = bucketName;
@@ -31,6 +32,8 @@ export class VideoStorageS3 implements VideoStorage {
     });
     // Temporary directory for video processing
     this.tempDir = path.join(__dirname, '../../.tmp');
+    // Initialize cache for index.m3u8 files
+    this.manifestCache = new Map();
   }
 
   async create(videoId: string, sourcePath: string): Promise<void> {
@@ -52,6 +55,13 @@ export class VideoStorageS3 implements VideoStorage {
 
   async delete(videoId: string): Promise<boolean> {
     try {
+      // Remove from cache if exists
+      const cacheKey = `${videoId}/index.m3u8`;
+      if (this.manifestCache.has(cacheKey)) {
+        this.manifestCache.delete(cacheKey);
+        console.log(`Removed cached index.m3u8 for video ${videoId}`);
+      }
+      
       // List all objects with the video prefix
       const listCommand = new ListObjectsV2Command({
         Bucket: this.bucketName,
@@ -104,6 +114,18 @@ export class VideoStorageS3 implements VideoStorage {
 
   async getFile(videoId: string, filename: string): Promise<{ stream: Readable; mime: string }> {
     try {
+      // Check if this is an index.m3u8 file and if we have it cached
+      if (filename === 'index.m3u8') {
+        const cacheKey = `${videoId}/index.m3u8`;
+        const cached = this.manifestCache.get(cacheKey);
+        
+        if (cached) {
+          console.log(`Serving index.m3u8 from cache for video ${videoId}`);
+          const stream = Readable.from(cached.content);
+          return { stream, mime: cached.mime };
+        }
+      }
+      
       const command = new GetObjectCommand({
         Bucket: this.bucketName,
         Key: `${videoId}/${filename}`,
@@ -115,7 +137,29 @@ export class VideoStorageS3 implements VideoStorage {
         throw new Error(`File not found: ${filename}`);
       }
       
-      // response.Body is already a Readable stream
+      // For index.m3u8 files, cache the content
+      if (filename === 'index.m3u8') {
+        const chunks: Buffer[] = [];
+        const stream = response.Body as Readable;
+        
+        // Collect all chunks
+        for await (const chunk of stream) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
+        
+        const content = Buffer.concat(chunks);
+        const mime = this.getMimeType(filename);
+        
+        // Cache the manifest (typical size is <5KB)
+        const cacheKey = `${videoId}/index.m3u8`;
+        this.manifestCache.set(cacheKey, { content, mime });
+        console.log(`Cached index.m3u8 for video ${videoId} (size: ${content.length} bytes)`);
+        
+        // Return a new readable stream from the buffer
+        return { stream: Readable.from(content), mime };
+      }
+      
+      // For other files, return the stream directly
       const stream = response.Body as Readable;
       const mime = this.getMimeType(filename);
       
@@ -307,5 +351,46 @@ export class VideoStorageS3 implements VideoStorage {
     } catch (error) {
       console.error('Failed to clean up temp directory:', error);
     }
+  }
+
+  // Cache management methods
+  getCacheSize(): number {
+    let totalSize = 0;
+    for (const [key, value] of this.manifestCache) {
+      totalSize += value.content.length;
+    }
+    return totalSize;
+  }
+
+  getCacheInfo(): { count: number; totalSizeBytes: number; videoIds: string[] } {
+    const videoIds = new Set<string>();
+    let totalSize = 0;
+    
+    for (const [key, value] of this.manifestCache) {
+      const videoId = key.split('/')[0];
+      videoIds.add(videoId);
+      totalSize += value.content.length;
+    }
+    
+    return {
+      count: this.manifestCache.size,
+      totalSizeBytes: totalSize,
+      videoIds: Array.from(videoIds)
+    };
+  }
+
+  clearCache(): void {
+    const previousSize = this.manifestCache.size;
+    this.manifestCache.clear();
+    console.log(`Cleared manifest cache (${previousSize} entries)`);
+  }
+
+  clearCacheForVideo(videoId: string): boolean {
+    const cacheKey = `${videoId}/index.m3u8`;
+    const deleted = this.manifestCache.delete(cacheKey);
+    if (deleted) {
+      console.log(`Cleared cache for video ${videoId}`);
+    }
+    return deleted;
   }
 }
