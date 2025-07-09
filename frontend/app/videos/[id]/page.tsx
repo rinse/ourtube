@@ -1,6 +1,7 @@
 'use client';
 
 import VideoPlayer from '../../components/VideoPlayer';
+import VideoListSidebar from '../../components/VideoListSidebar';
 import Header from '../../components/Header';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -131,90 +132,100 @@ export default function VideoPage({ params }: PageProps) {
       <Header />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-          {loading ? (
-            <div className="p-4">
-              <div className="animate-pulse">
-                <div className="h-6 bg-gray-200 rounded w-3/4"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/2 mt-2"></div>
-              </div>
-            </div>
-          ) : error ? (
-            <div className="p-4 text-red-600">
-              <h2 className="text-xl font-semibold">Error</h2>
-              <p className="text-sm mt-1">{error}</p>
-            </div>
-          ) : (
-            <>
-              {videoId && (
-                <VideoPlayer src={`/api/videos/${videoId}/index.m3u8`} autoPlay={true} />
-              )}
-              
-              <div className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1 mr-4">
-                    {isEditing ? (
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="text"
-                          value={editTitle}
-                          onChange={(e) => setEditTitle(e.target.value)}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-lg font-semibold"
-                          disabled={isUpdating}
-                        />
-                        <button
-                          onClick={handleEditConfirm}
-                          disabled={isUpdating || !editTitle.trim()}
-                          className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
-                        >
-                          {isUpdating ? (
-                            <>
-                              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                              </svg>
-                              Saving...
-                            </>
-                          ) : (
-                            <>
-                              <span className="mr-1">✅</span>
-                              Confirm
-                            </>
-                          )}
-                        </button>
-                        <button
-                          onClick={handleEditCancel}
-                          disabled={isUpdating}
-                          className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
-                        >
-                          <span className="mr-1">✕</span>
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center space-x-3">
-                        <h2 className="text-xl font-semibold text-gray-800">{videoInfo?.title}</h2>
-                        <button
-                          onClick={handleEditStart}
-                          className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                        >
-                          <span className="mr-1">🖊</span>
-                          Edit
-                        </button>
-                      </div>
-                    )}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Video Player Section - Left Side */}
+          <div className="lg:col-span-2">
+            <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+              {loading ? (
+                <div className="p-4">
+                  <div className="animate-pulse">
+                    <div className="h-6 bg-gray-200 rounded w-3/4"></div>
+                    <div className="h-4 bg-gray-200 rounded w-1/2 mt-2"></div>
                   </div>
-                  <button
-                    onClick={() => setShowDeleteConfirm(true)}
-                    className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                  >
-                    <span className="mr-1">🗑</span>
-                    Delete
-                  </button>
                 </div>
-              </div>
-            </>
-          )}
+              ) : error ? (
+                <div className="p-4 text-red-600">
+                  <h2 className="text-xl font-semibold">Error</h2>
+                  <p className="text-sm mt-1">{error}</p>
+                </div>
+              ) : (
+                <>
+                  {videoId && (
+                    <VideoPlayer src={`/api/videos/${videoId}/index.m3u8`} autoPlay={true} />
+                  )}
+                  
+                  <div className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 mr-4">
+                        {isEditing ? (
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="text"
+                              value={editTitle}
+                              onChange={(e) => setEditTitle(e.target.value)}
+                              className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-lg font-semibold"
+                              disabled={isUpdating}
+                            />
+                            <button
+                              onClick={handleEditConfirm}
+                              disabled={isUpdating || !editTitle.trim()}
+                              className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+                            >
+                              {isUpdating ? (
+                                <>
+                                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                  </svg>
+                                  Saving...
+                                </>
+                              ) : (
+                                <>
+                                  <span className="mr-1">✅</span>
+                                  Confirm
+                                </>
+                              )}
+                            </button>
+                            <button
+                              onClick={handleEditCancel}
+                              disabled={isUpdating}
+                              className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+                            >
+                              <span className="mr-1">✕</span>
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center space-x-3">
+                            <h2 className="text-xl font-semibold text-gray-800">{videoInfo?.title}</h2>
+                            <button
+                              onClick={handleEditStart}
+                              className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                            >
+                              <span className="mr-1">🖊</span>
+                              Edit
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                      >
+                        <span className="mr-1">🗑</span>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Video List Sidebar - Right Side */}
+          <div className="lg:col-span-1">
+            <VideoListSidebar currentVideoId={videoId} />
+          </div>
         </div>
       </main>
 
