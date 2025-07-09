@@ -1,19 +1,30 @@
 import { VideoStorage } from './VideoStorage';
 import { VideoStorageFileSystem } from './VideoStorageFileSystem';
+import { VideoStorageS3 } from './VideoStorageS3';
 
 let storageInstance: VideoStorage;
 
 export function getVideoStorage(): VideoStorage {
   if (!storageInstance) {
-    storageInstance = new VideoStorageFileSystem();
+    const storageType = process.env.VIDEO_STORAGE_TYPE || 'filesystem';
+    console.log(`Using video storage type: ${storageType}`);
+    switch (storageType) {
+      case 's3':
+        storageInstance = new VideoStorageS3(
+          process.env.S3_BUCKET_NAME ?? 'ourtube-videostorage',
+          process.env.AWS_REGION ?? 'ap-northeast-1');
+        break;
+      case 'filesystem':
+        storageInstance = new VideoStorageFileSystem();
+        break;
+      default:
+        storageInstance = new VideoStorageFileSystem();
+        break;
+    }
   }
   return storageInstance;
 }
 
-// For testing or custom implementations
-export function setVideoStorage(storage: VideoStorage): void {
-  storageInstance = storage;
-}
-
 export { VideoStorage } from './VideoStorage';
 export { VideoStorageFileSystem } from './VideoStorageFileSystem';
+export { VideoStorageS3 } from './VideoStorageS3';

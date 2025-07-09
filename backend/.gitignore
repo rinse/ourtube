@@ -36,3 +36,4 @@ temp/
 # Videos
 videos/
 videos.db
+videos.*.db

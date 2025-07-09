@@ -141,5 +141,6 @@ class Database {
 }
 
 // Singleton instance
-const dbPath = path.join(__dirname, '..', 'videos.db');
+const dbFilename = process.env.DB_FILENAME ?? 'videos.db'
+const dbPath = path.join(__dirname, '..', dbFilename);
 export const database = new Database(dbPath);
