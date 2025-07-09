@@ -8,7 +8,7 @@ export default function Home() {
       <Header>
         <Link 
           href="/upload"
-          className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          className="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
         >
           + Upload
         </Link>
