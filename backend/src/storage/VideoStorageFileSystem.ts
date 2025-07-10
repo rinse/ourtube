@@ -14,34 +14,33 @@ const fsUnlink = promisify(fs.unlink);
 
 export class VideoStorageFileSystem implements VideoStorage {
   private videosBasePath: string;
-  
-  constructor(videosPath?: string) {
-    this.videosBasePath = videosPath || path.join(__dirname, '../../videos');
+
+  constructor(videosPath: string) {
+    this.videosBasePath = videosPath;
   }
-  
+
   async create(videoId: string, sourcePath: string): Promise<void> {
     const targetDir = path.join(this.videosBasePath, videoId);
     await fsMkdir(targetDir, { recursive: true });
-    
-    // Start conversion in background
     setImmediate(() => this.performConversion(videoId, sourcePath, targetDir));
   }
-  
+
   async exists(videoId: string): Promise<boolean> {
     const dirPath = path.join(this.videosBasePath, videoId);
     return fsExists(dirPath);
   }
-  
+
   async delete(videoId: string): Promise<boolean> {
     const dirPath = path.join(this.videosBasePath, videoId);
     try {
       await fsRm(dirPath, { recursive: true, force: true });
       return true;
     } catch (error) {
+      console.error(`Failed to delete video directory ${videoId}:`, error);
       return false;
     }
   }
-  
+
   async list(): Promise<string[]> {
     try {
       const entries = await fsReaddir(this.videosBasePath, { withFileTypes: true });
@@ -49,29 +48,26 @@ export class VideoStorageFileSystem implements VideoStorage {
         .filter(entry => entry.isDirectory())
         .map(entry => entry.name);
     } catch (error) {
-      // If videos directory doesn't exist, return empty array
+      console.error('Failed to list video directories:', error);
       return [];
     }
   }
-  
+
   async getFile(videoId: string, filename: string): Promise<{ stream: Readable; mime: string }> {
     const filePath = path.join(this.videosBasePath, videoId, filename);
-    
     if (!(await fsExists(filePath))) {
       throw new Error(`File not found: ${filename}`);
     }
-    
     const stream = fs.createReadStream(filePath);
     const mime = this.getMimeType(filename);
-    
     return { stream, mime };
   }
-  
+
   async existsFile(videoId: string, filename: string): Promise<boolean> {
     const filePath = path.join(this.videosBasePath, videoId, filename);
     return fsExists(filePath);
   }
-  
+
   private getMimeType(filename: string): string {
     const ext = path.extname(filename).toLowerCase();
     const mimeTypes: Record<string, string> = {
@@ -82,13 +78,11 @@ export class VideoStorageFileSystem implements VideoStorage {
       '.jpg': 'image/jpeg',
       '.jpeg': 'image/jpeg'
     };
-    
-    return mimeTypes[ext] || 'application/octet-stream';
+    return mimeTypes[ext] ?? 'application/octet-stream';
   }
-  
+
   private async performConversion(videoId: string, sourcePath: string, targetDir: string): Promise<void> {
     const outputPath = path.join(targetDir, 'index.m3u8');
-    
     const ffmpeg = spawn('ffmpeg', [
       '-i', sourcePath,
       '-c:v', 'libx264',

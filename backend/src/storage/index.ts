@@ -1,3 +1,4 @@
+import path from 'path';
 import { VideoStorage } from './VideoStorage';
 import { VideoStorageFileSystem } from './VideoStorageFileSystem';
 import { VideoStorageS3 } from './VideoStorageS3';
@@ -15,10 +16,10 @@ export function getVideoStorage(): VideoStorage {
           process.env.AWS_REGION ?? 'ap-northeast-1');
         break;
       case 'filesystem':
-        storageInstance = new VideoStorageFileSystem();
+        storageInstance = new VideoStorageFileSystem(path.join(__dirname, '../../videos'));
         break;
       default:
-        storageInstance = new VideoStorageFileSystem();
+        storageInstance = new VideoStorageFileSystem(path.join(__dirname, '../../videos'));
         break;
     }
   }
