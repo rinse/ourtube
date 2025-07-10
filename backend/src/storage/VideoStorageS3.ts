@@ -7,12 +7,11 @@ import {
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { Readable } from 'stream';
-import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { promisify } from 'util';
 import { VideoStorage } from './VideoStorage';
-import { database } from '../database';
+import { getMimeType, updateVideoStatus, generateThumbnail, convertVideoToHLS } from './VideoStorageUtils';
 
 const fsUnlink = promisify(fs.unlink);
 const fsMkdir = promisify(fs.mkdir);
@@ -148,7 +147,7 @@ export class VideoStorageS3 implements VideoStorage {
         }
         
         const content = Buffer.concat(chunks);
-        const mime = this.getMimeType(filename);
+        const mime = getMimeType(filename);
         
         // Cache the manifest (typical size is <5KB)
         const cacheKey = `${videoId}/index.m3u8`;
@@ -161,7 +160,7 @@ export class VideoStorageS3 implements VideoStorage {
       
       // For other files, return the stream directly
       const stream = response.Body as Readable;
-      const mime = this.getMimeType(filename);
+      const mime = getMimeType(filename);
       
       return { stream, mime };
     } catch (error) {
@@ -181,19 +180,6 @@ export class VideoStorageS3 implements VideoStorage {
     }
   }
 
-  private getMimeType(filename: string): string {
-    const ext = path.extname(filename).toLowerCase();
-    const mimeTypes: Record<string, string> = {
-      '.m3u8': 'application/vnd.apple.mpegurl',
-      '.ts': 'video/mp2t',
-      '.vtt': 'text/vtt',
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg'
-    };
-    
-    return mimeTypes[ext] || 'application/octet-stream';
-  }
 
   private async performConversion(videoId: string, sourcePath: string): Promise<void> {
     // Create temporary directory for processing
@@ -202,99 +188,55 @@ export class VideoStorageS3 implements VideoStorage {
     
     const outputPath = path.join(tempVideoDir, 'index.m3u8');
     
-    const ffmpeg = spawn('ffmpeg', [
-      '-i', sourcePath,
-      '-c:v', 'libx264',
-      '-c:a', 'aac',
-      '-hls_time', '10',
-      '-hls_list_size', '0',
-      '-hls_playlist_type', 'vod',
-      '-f', 'hls',
-      outputPath
-    ]);
-    
-    let errorOutput = '';
-    
-    ffmpeg.stderr.on('data', (data) => {
-      errorOutput += data.toString();
-      console.log(`FFmpeg: ${data}`);
-    });
-    
-    ffmpeg.on('close', async (code) => {
-      if (code === 0) {
-        try {
-          // Generate thumbnail
-          await this.generateThumbnail(sourcePath, tempVideoDir);
-          console.log(`Thumbnail generated for video ${videoId}`);
-        } catch (error) {
-          console.error('Failed to generate thumbnail:', error);
+    convertVideoToHLS(
+      sourcePath,
+      outputPath,
+      (data) => {
+        console.log(`FFmpeg: ${data}`);
+      },
+      async (code, errorOutput) => {
+        if (code === 0) {
+          try {
+            // Generate thumbnail
+            await generateThumbnail(sourcePath, tempVideoDir);
+            console.log(`Thumbnail generated for video ${videoId}`);
+          } catch (error) {
+            console.error('Failed to generate thumbnail:', error);
+          }
+          
+          // Upload all files to S3
+          try {
+            await this.uploadDirectoryToS3(tempVideoDir, videoId);
+            console.log(`Video files uploaded to S3 for ${videoId}`);
+          } catch (error) {
+            console.error('Failed to upload to S3:', error);
+            await updateVideoStatus(videoId, 'failed');
+            return;
+          }
+          
+          // Update video status in database
+          await updateVideoStatus(videoId, 'ready');
+          
+          // Clean up
+          await this.cleanupTempFiles(sourcePath, tempVideoDir);
+          
+          console.log(`Video conversion completed for ${videoId}`);
+        } else {
+          const errorMessage = `FFmpeg exited with code ${code}: ${errorOutput}`;
+          console.error(errorMessage);
+          
+          await updateVideoStatus(videoId, 'failed');
+          await this.cleanupTempFiles(sourcePath, tempVideoDir);
         }
-        
-        // Upload all files to S3
-        try {
-          await this.uploadDirectoryToS3(tempVideoDir, videoId);
-          console.log(`Video files uploaded to S3 for ${videoId}`);
-        } catch (error) {
-          console.error('Failed to upload to S3:', error);
-          await this.updateVideoStatus(videoId, 'failed');
-          return;
-        }
-        
-        // Update video status in database
-        await this.updateVideoStatus(videoId, 'ready');
-        
-        // Clean up
-        await this.cleanupTempFiles(sourcePath, tempVideoDir);
-        
-        console.log(`Video conversion completed for ${videoId}`);
-      } else {
-        const errorMessage = `FFmpeg exited with code ${code}: ${errorOutput}`;
-        console.error(errorMessage);
-        
-        await this.updateVideoStatus(videoId, 'failed');
+      },
+      async (error) => {
+        console.error('FFmpeg error:', error);
+        await updateVideoStatus(videoId, 'failed');
         await this.cleanupTempFiles(sourcePath, tempVideoDir);
       }
-    });
-    
-    ffmpeg.on('error', async (error) => {
-      console.error('FFmpeg error:', error);
-      await this.updateVideoStatus(videoId, 'failed');
-      await this.cleanupTempFiles(sourcePath, tempVideoDir);
-    });
+    );
   }
 
-  private async generateThumbnail(sourcePath: string, targetDir: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const thumbnailPath = path.join(targetDir, 'thumbnail.png');
-      
-      const ffmpeg = spawn('ffmpeg', [
-        '-i', sourcePath,
-        '-ss', '10',
-        '-vframes', '1',
-        '-vf', 'scale=320:180',
-        '-y',
-        thumbnailPath
-      ]);
-      
-      let errorOutput = '';
-      
-      ffmpeg.stderr.on('data', (data) => {
-        errorOutput += data.toString();
-      });
-      
-      ffmpeg.on('close', (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`Thumbnail generation failed with code ${code}: ${errorOutput}`));
-        }
-      });
-      
-      ffmpeg.on('error', (error) => {
-        reject(error);
-      });
-    });
-  }
 
   private async uploadDirectoryToS3(localDir: string, videoId: string): Promise<void> {
     const files = await promisify(fs.readdir)(localDir);
@@ -310,7 +252,7 @@ export class VideoStorageS3 implements VideoStorage {
           Bucket: this.bucketName,
           Key: key,
           Body: fileStream,
-          ContentType: this.getMimeType(filename),
+          ContentType: getMimeType(filename),
         },
       });
       
@@ -321,17 +263,6 @@ export class VideoStorageS3 implements VideoStorage {
     await Promise.all(uploadPromises);
   }
 
-  private async updateVideoStatus(videoId: string, status: 'ready' | 'failed'): Promise<void> {
-    try {
-      const videoMetadata = await database.getVideoMetadata(videoId);
-      if (videoMetadata) {
-        videoMetadata.status = status;
-        await database.saveVideoMetadata(videoMetadata);
-      }
-    } catch (error) {
-      console.error('Failed to update video status:', error);
-    }
-  }
 
   private async cleanupTempFiles(sourcePath: string, tempDir: string): Promise<void> {
     // Clean up source file
@@ -340,7 +271,6 @@ export class VideoStorageS3 implements VideoStorage {
     } catch (error) {
       console.error('Failed to delete source file:', error);
     }
-    
     // Clean up temporary directory
     try {
       const files = await promisify(fs.readdir)(tempDir);
@@ -365,13 +295,11 @@ export class VideoStorageS3 implements VideoStorage {
   getCacheInfo(): { count: number; totalSizeBytes: number; videoIds: string[] } {
     const videoIds = new Set<string>();
     let totalSize = 0;
-    
     for (const [key, value] of this.manifestCache) {
       const videoId = key.split('/')[0];
       videoIds.add(videoId);
       totalSize += value.content.length;
     }
-    
     return {
       count: this.manifestCache.size,
       totalSizeBytes: totalSize,
