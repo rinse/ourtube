@@ -225,7 +225,7 @@ export default function VideoPage({ params }: PageProps) {
           </div>
 
           {/* Video List Sidebar - Right Side */}
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 px-4 sm:px-0">
             <VideoListSidebar currentVideoId={videoId} />
           </div>
         </div>

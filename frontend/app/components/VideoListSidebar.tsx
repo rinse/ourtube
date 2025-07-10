@@ -98,10 +98,10 @@ export default function VideoListSidebar({ currentVideoId }: VideoListSidebarPro
     return (
       <div className="space-y-3">
         {[...Array(5)].map((_, i) => (
-          <div key={i} className="bg-white rounded-none sm:rounded-lg shadow-sm overflow-hidden animate-pulse">
-            <div className="flex">
-              <div className="w-1/2 aspect-video bg-gray-200"></div>
-              <div className="w-1/2 p-3 flex flex-col justify-center">
+          <div key={i} className="bg-white rounded-lg shadow-sm overflow-hidden animate-pulse">
+            <div className="flex flex-col sm:flex-row">
+              <div className="w-full sm:w-1/2 aspect-video bg-gray-200"></div>
+              <div className="w-full sm:w-1/2 p-3 flex flex-col justify-center">
                 <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
                 <div className="h-3 bg-gray-200 rounded w-1/2"></div>
               </div>
@@ -114,7 +114,7 @@ export default function VideoListSidebar({ currentVideoId }: VideoListSidebarPro
 
   if (error) {
     return (
-      <div className="bg-white rounded-none sm:rounded-lg shadow-sm p-4">
+      <div className="bg-white rounded-lg shadow-sm p-4">
         <div className="text-red-600 text-sm">
           <p className="font-semibold mb-1">Error Loading Videos</p>
           <p className="text-xs">{error}</p>
@@ -125,7 +125,7 @@ export default function VideoListSidebar({ currentVideoId }: VideoListSidebarPro
 
   if (videos.length === 0) {
     return (
-      <div className="bg-white rounded-none sm:rounded-lg shadow-sm p-4">
+      <div className="bg-white rounded-lg shadow-sm p-4">
         <div className="text-gray-500 text-sm text-center">
           <p className="font-semibold mb-1">No Videos</p>
           <p className="text-xs">No videos available</p>
@@ -141,19 +141,19 @@ export default function VideoListSidebar({ currentVideoId }: VideoListSidebarPro
         const isCurrentVideo = video.id === currentVideoId;
         
         const videoCard = (
-          <div className={`bg-white rounded-none sm:rounded-lg shadow-sm overflow-hidden transition-all duration-200 ${
+          <div className={`bg-white rounded-lg shadow-sm overflow-hidden transition-all duration-200 ${
             isReady ? 'hover:shadow-md hover:scale-[1.02] cursor-pointer' : 'opacity-75 cursor-not-allowed'
           } ${isCurrentVideo ? 'ring-2 ring-blue-500' : ''} mb-3 last:mb-0`}>
-            <div className="flex h-24">
+            <div className="flex flex-col sm:flex-row sm:h-24">
               {/* Thumbnail */}
-              <div className="w-1/2 relative bg-gradient-to-br from-gray-200 via-gray-300 to-gray-400">
+              <div className="w-full sm:w-1/2 aspect-video sm:aspect-auto relative bg-gradient-to-br from-gray-200 via-gray-300 to-gray-400">
                 {video.thumbnailUrl ? (
                   <Image 
                     src={video.thumbnailUrl} 
                     alt={video.title}
                     className="object-cover"
                     fill
-                    sizes="200px"
+                    sizes="(max-width: 640px) 100vw, 200px"
                     onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
                       e.currentTarget.style.display = 'none';
                       e.currentTarget.nextElementSibling?.classList.remove('hidden');
@@ -189,8 +189,8 @@ export default function VideoListSidebar({ currentVideoId }: VideoListSidebarPro
               </div>
               
               {/* Title */}
-              <div className="w-1/2 p-3 flex flex-col justify-center">
-                <h3 className="text-sm font-semibold text-gray-800 line-clamp-2 leading-tight mb-1">
+              <div className="w-full sm:w-1/2 p-3 flex flex-col justify-center">
+                <h3 className="text-base sm:text-sm font-semibold text-gray-800 line-clamp-2 leading-tight mb-1">
                   {video.title}
                 </h3>
                 <div className={`text-xs ${
