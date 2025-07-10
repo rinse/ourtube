@@ -128,14 +128,14 @@ export default function VideoPage({ params }: PageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-white sm:bg-gray-100">
       <Header />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <main className="max-w-7xl mx-auto px-0 sm:px-4 md:px-6 lg:px-8 py-0 sm:py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 sm:gap-6">
           {/* Video Player Section - Left Side */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+            <div className="bg-white rounded-none sm:rounded-lg shadow-none sm:shadow-lg overflow-hidden">
               {loading ? (
                 <div className="p-4">
                   <div className="animate-pulse">

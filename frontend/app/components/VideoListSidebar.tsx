@@ -98,7 +98,7 @@ export default function VideoListSidebar({ currentVideoId }: VideoListSidebarPro
     return (
       <div className="space-y-3">
         {[...Array(5)].map((_, i) => (
-          <div key={i} className="bg-white rounded-lg shadow-sm overflow-hidden animate-pulse">
+          <div key={i} className="bg-white rounded-none sm:rounded-lg shadow-sm overflow-hidden animate-pulse">
             <div className="flex">
               <div className="w-1/2 aspect-video bg-gray-200"></div>
               <div className="w-1/2 p-3 flex flex-col justify-center">
@@ -114,7 +114,7 @@ export default function VideoListSidebar({ currentVideoId }: VideoListSidebarPro
 
   if (error) {
     return (
-      <div className="bg-white rounded-lg shadow-sm p-4">
+      <div className="bg-white rounded-none sm:rounded-lg shadow-sm p-4">
         <div className="text-red-600 text-sm">
           <p className="font-semibold mb-1">Error Loading Videos</p>
           <p className="text-xs">{error}</p>
@@ -125,7 +125,7 @@ export default function VideoListSidebar({ currentVideoId }: VideoListSidebarPro
 
   if (videos.length === 0) {
     return (
-      <div className="bg-white rounded-lg shadow-sm p-4">
+      <div className="bg-white rounded-none sm:rounded-lg shadow-sm p-4">
         <div className="text-gray-500 text-sm text-center">
           <p className="font-semibold mb-1">No Videos</p>
           <p className="text-xs">No videos available</p>
@@ -141,7 +141,7 @@ export default function VideoListSidebar({ currentVideoId }: VideoListSidebarPro
         const isCurrentVideo = video.id === currentVideoId;
         
         const videoCard = (
-          <div className={`bg-white rounded-lg shadow-sm overflow-hidden transition-all duration-200 ${
+          <div className={`bg-white rounded-none sm:rounded-lg shadow-sm overflow-hidden transition-all duration-200 ${
             isReady ? 'hover:shadow-md hover:scale-[1.02] cursor-pointer' : 'opacity-75 cursor-not-allowed'
           } ${isCurrentVideo ? 'ring-2 ring-blue-500' : ''} mb-3 last:mb-0`}>
             <div className="flex h-24">
