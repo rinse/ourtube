@@ -37,3 +37,6 @@ temp/
 videos/
 videos.db
 videos.*.db
+
+# Uploads
+uploads/
