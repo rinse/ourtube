@@ -1,0 +1,9 @@
+.git/
+.DS_Store
+
+# Build output
+node_modules/
+.next/
+
+# Credentials
+.env*.local

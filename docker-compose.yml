@@ -1,0 +1,37 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: videoplayer-backend
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./backend/.workdir:/app/.workdir
+    env_file:
+      - ./backend/.env
+    environment:
+      - NODE_ENV=production
+      - WORK_DIR=.workdir
+    networks:
+      - videoplayer-network
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        BACKEND_URL: http://backend:4000
+    container_name: videoplayer-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    networks:
+      - videoplayer-network
+    restart: always
+
+networks:
+  videoplayer-network:
+    driver: bridge

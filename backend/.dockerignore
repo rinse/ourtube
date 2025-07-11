@@ -1,0 +1,14 @@
+.git/
+.DS_Store
+
+# Build output
+node_modules/
+dist/
+
+# Credentials
+.env*.local
+
+# Runtime output
+videos/
+uploads/
+videos*.db
