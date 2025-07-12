@@ -12,6 +12,7 @@ import path from 'path';
 import { promisify } from 'util';
 import { VideoStorage } from './VideoStorage';
 import { getMimeType, updateVideoStatus, generateThumbnail, convertVideoToHLS } from './VideoStorageUtils';
+import { config } from '../config';
 
 const fsUnlink = promisify(fs.unlink);
 const fsMkdir = promisify(fs.mkdir);
@@ -30,7 +31,7 @@ export class VideoStorageS3 implements VideoStorage {
       region: awsRegion,
     });
     // Temporary directory for video processing
-    this.tempDir = path.join(__dirname, '../../.tmp');
+    this.tempDir = config.tempDir;
     // Initialize cache for index.m3u8 files
     this.manifestCache = new Map();
   }

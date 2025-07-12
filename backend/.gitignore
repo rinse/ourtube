@@ -28,15 +28,5 @@ Thumbs.db
 *.swp
 *.swo
 
-# Temporary files
-.tmp/
-tmp/
-temp/
-
-# Videos
-videos/
-videos.db
-videos.*.db
-
-# Uploads
-uploads/
+# Default working directory
+.workdir/

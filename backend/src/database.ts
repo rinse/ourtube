@@ -1,9 +1,9 @@
 import sqlite3 from 'sqlite3';
-import path from 'path';
 import * as t from 'io-ts';
 import { pipe } from 'fp-ts/function';
 import { fold } from 'fp-ts/Either';
 import { PathReporter } from 'io-ts/PathReporter';
+import { config } from './config';
 
 // Define the runtime codec for VideoMetadata
 export const VideoMetadataCodec = t.type({
@@ -141,6 +141,4 @@ class Database {
 }
 
 // Singleton instance
-const dbFilename = process.env.DB_FILENAME ?? 'videos.db'
-const dbPath = path.join(__dirname, '..', dbFilename);
-export const database = new Database(dbPath);
+export const database = new Database(config.databasePath);

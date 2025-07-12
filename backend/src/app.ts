@@ -5,6 +5,7 @@ import multer from 'multer';
 import { database, VideoMetadata } from './database';
 import { generateVideoId } from './video-processor';
 import { getVideoStorage } from './storage';
+import { config } from './config';
 import {
   ApiErrorResponse,
   ApiStatusResponse,
@@ -22,7 +23,7 @@ const storage = getVideoStorage();
 
 // Configure multer for video uploads
 const upload = multer({
-  dest: path.join(__dirname, '..', 'uploads'),
+  dest: config.uploadsDir,
   limits: {
     fileSize: 5 * 1024 * 1024 * 1024 // 5GB max file size
   },
