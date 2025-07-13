@@ -30,8 +30,8 @@ export const config = {
     return dir;
   },
   
-  get tempDir(): string {
-    const dir = path.join(this.workDir, '.tmp');
+  get conversionDir(): string {
+    const dir = path.join(this.workDir, 'conversion');
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }

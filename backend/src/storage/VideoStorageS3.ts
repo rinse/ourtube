@@ -30,8 +30,8 @@ export class VideoStorageS3 implements VideoStorage {
     this.s3Client = new S3Client({
       region: awsRegion,
     });
-    // Temporary directory for video processing
-    this.tempDir = config.tempDir;
+    // Conversion directory for video processing
+    this.tempDir = config.conversionDir;
     // Initialize cache for index.m3u8 files
     this.manifestCache = new Map();
   }
