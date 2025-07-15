@@ -67,11 +67,23 @@ class Database {
       )
     `;
 
+    const createIndexSQL = `
+      CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at)
+    `;
+
     this.db.run(createTableSQL, (err) => {
       if (err) {
         console.error('Error creating videos table:', err);
       } else {
         console.log('Videos table ready');
+        // Create index after table is created
+        this.db.run(createIndexSQL, (indexErr) => {
+          if (indexErr) {
+            console.error('Error creating created_at index:', indexErr);
+          } else {
+            console.log('Created index on created_at column');
+          }
+        });
       }
     });
   }
