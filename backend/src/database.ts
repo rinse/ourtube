@@ -2,8 +2,23 @@ import sqlite3 from 'sqlite3';
 import * as t from 'io-ts';
 import { pipe } from 'fp-ts/function';
 import { fold } from 'fp-ts/Either';
-import { PathReporter } from 'io-ts/PathReporter';
 import { config } from './config';
+
+// Create a codec that handles SQLite's 0/1 as boolean
+const SQLiteBooleanCodec = new t.Type<boolean, number, unknown>(
+  'SQLiteBoolean',
+  (a: unknown): a is boolean => typeof a === 'boolean',
+  (a: unknown, context) => {
+    if (a === 0 || a === 1) {
+      return t.success(Boolean(a));
+    }
+    if (typeof a === 'boolean') {
+      return t.success(a);
+    }
+    return t.failure(a, context);
+  },
+  b => b ? 1 : 0,
+);
 
 // Define the runtime codec for VideoMetadata
 export const VideoMetadataCodec = t.type({
@@ -14,7 +29,8 @@ export const VideoMetadataCodec = t.type({
     t.literal('ready'),
     t.literal('failed')
   ]),
-  created_at: t.string
+  created_at: t.string,
+  has_thumbnail: SQLiteBooleanCodec,
 });
 
 // Extract the static type from codec
@@ -46,7 +62,8 @@ class Database {
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'converting',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        has_thumbnail BOOLEAN DEFAULT 0
       )
     `;
 
@@ -92,8 +109,8 @@ class Database {
 
   public async saveVideoMetadata(metadata: VideoMetadata): Promise<void> {
     return new Promise((resolve, reject) => {
-      const sql = 'INSERT OR REPLACE INTO videos (id, title, status, created_at) VALUES (?, ?, ?, ?)';
-      this.db.run(sql, [metadata.id, metadata.title, metadata.status, metadata.created_at], (err) => {
+      const sql = 'INSERT OR REPLACE INTO videos (id, title, status, created_at, has_thumbnail) VALUES (?, ?, ?, ?, ?)';
+      this.db.run(sql, [metadata.id, metadata.title, metadata.status, metadata.created_at, metadata.has_thumbnail], (err) => {
         if (err) {
           reject(err);
         } else {
@@ -120,6 +137,19 @@ class Database {
     return new Promise((resolve, reject) => {
       const sql = 'UPDATE videos SET title = ? WHERE id = ?';
       this.db.run(sql, [newTitle, videoId], function(err) {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(this.changes > 0);
+        }
+      });
+    });
+  }
+
+  public async updateVideoThumbnailStatus(videoId: string, hasThumbnail: boolean): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      const sql = 'UPDATE videos SET has_thumbnail = ? WHERE id = ?';
+      this.db.run(sql, [SQLiteBooleanCodec.encode(hasThumbnail), videoId], function(err) {
         if (err) {
           reject(err);
         } else {

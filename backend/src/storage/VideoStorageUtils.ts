@@ -28,6 +28,14 @@ export async function updateVideoStatus(videoId: string, status: 'ready' | 'fail
   }
 }
 
+export async function updateVideoThumbnailStatus(videoId: string, hasThumbnail: boolean): Promise<void> {
+  try {
+    await database.updateVideoThumbnailStatus(videoId, hasThumbnail);
+  } catch (error) {
+    console.error('Failed to update thumbnail status:', error);
+  }
+}
+
 export async function generateThumbnail(sourcePath: string, targetDir: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const thumbnailPath = path.join(targetDir, 'thumbnail.png');

@@ -64,18 +64,15 @@ app.get('/api/health', (req: Request, res: Response) => {
 app.get('/api/videos', async (req: Request, res: Response): Promise<void> => {
   try {
     const videos = await database.listVideos();
-    const videoList: VideoItem[] = await Promise.all(videos.map(async video => {
-      // Check if thumbnail exists
-      const hasThumbnail = await storage.existsFile(video.id, 'thumbnail.png');
-      
+    const videoList: VideoItem[] = videos.map(video => {
       return {
         id: video.id,
         title: video.title,
         hlsUrl: `/api/videos/${video.id}/index.m3u8`,
         status: video.status,
-        thumbnailUrl: hasThumbnail ? `/api/videos/${video.id}/thumbnail.png` : null
+        thumbnailUrl: video.has_thumbnail ? `/api/videos/${video.id}/thumbnail.png` : null
       };
-    }));
+    });
     
     const response: VideoListResponse = {
       videos: videoList,
@@ -107,15 +104,12 @@ app.get('/api/videos/:videoid', async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    // Check if thumbnail exists
-    const hasThumbnail = await storage.existsFile(video.id, 'thumbnail.png');
-
     res.json({
       id: video.id,
       title: video.title,
       hlsUrl: `/api/videos/${video.id}/index.m3u8`,
       status: video.status,
-      thumbnailUrl: hasThumbnail ? `/api/videos/${video.id}/thumbnail.png` : null
+      thumbnailUrl: video.has_thumbnail ? `/api/videos/${video.id}/thumbnail.png` : null
     } satisfies VideoInfoResponse);
   } catch (error) {
     console.error('Error fetching video info:', error);
@@ -258,7 +252,8 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
       id: videoId,
       title: title,
       status: 'converting',
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      has_thumbnail: false
     };
     
     await database.saveVideoMetadata(metadata);

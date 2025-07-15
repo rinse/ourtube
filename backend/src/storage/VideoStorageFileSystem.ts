@@ -3,7 +3,7 @@ import path from 'path';
 import { promisify } from 'util';
 import { Readable } from 'stream';
 import { VideoStorage } from './VideoStorage';
-import { getMimeType, updateVideoStatus, generateThumbnail, convertVideoToHLS } from './VideoStorageUtils';
+import { getMimeType, updateVideoStatus, updateVideoThumbnailStatus, generateThumbnail, convertVideoToHLS } from './VideoStorageUtils';
 
 const fsExists = promisify(fs.exists);
 const fsReaddir = promisify(fs.readdir);
@@ -79,13 +79,18 @@ export class VideoStorageFileSystem implements VideoStorage {
       async (code, errorOutput) => {
         if (code === 0) {
           // Generate thumbnail after successful HLS conversion
+          let thumbnailGenerated = false;
           try {
             await generateThumbnail(sourcePath, targetDir);
+            thumbnailGenerated = true;
             console.log(`Thumbnail generated for video ${videoId}`);
           } catch (error) {
             console.error('Failed to generate thumbnail:', error);
             // Continue even if thumbnail generation fails
           }
+          
+          // Update thumbnail status in database
+          await updateVideoThumbnailStatus(videoId, thumbnailGenerated);
           
           // Update video status in database
           await updateVideoStatus(videoId, 'ready');

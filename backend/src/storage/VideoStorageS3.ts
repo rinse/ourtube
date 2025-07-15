@@ -11,7 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import { promisify } from 'util';
 import { VideoStorage } from './VideoStorage';
-import { getMimeType, updateVideoStatus, generateThumbnail, convertVideoToHLS } from './VideoStorageUtils';
+import { getMimeType, updateVideoStatus, updateVideoThumbnailStatus, generateThumbnail, convertVideoToHLS } from './VideoStorageUtils';
 import { config } from '../config';
 
 const fsUnlink = promisify(fs.unlink);
@@ -197,9 +197,11 @@ export class VideoStorageS3 implements VideoStorage {
       },
       async (code, errorOutput) => {
         if (code === 0) {
+          let thumbnailGenerated = false;
           try {
             // Generate thumbnail
             await generateThumbnail(sourcePath, tempVideoDir);
+            thumbnailGenerated = true;
             console.log(`Thumbnail generated for video ${videoId}`);
           } catch (error) {
             console.error('Failed to generate thumbnail:', error);
@@ -214,6 +216,9 @@ export class VideoStorageS3 implements VideoStorage {
             await updateVideoStatus(videoId, 'failed');
             return;
           }
+          
+          // Update thumbnail status in database
+          await updateVideoThumbnailStatus(videoId, thumbnailGenerated);
           
           // Update video status in database
           await updateVideoStatus(videoId, 'ready');
