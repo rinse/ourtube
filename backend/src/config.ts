@@ -23,11 +23,7 @@ export const config = {
   },
   
   get videosDir(): string {
-    const dir = path.join(this.workDir, 'videos');
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    return dir;
+    return path.join(this.workDir, 'videos');
   },
   
   get conversionDir(): string {

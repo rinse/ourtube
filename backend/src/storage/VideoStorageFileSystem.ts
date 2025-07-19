@@ -16,6 +16,11 @@ export class VideoStorageFileSystem implements VideoStorage {
 
   constructor(videosPath: string) {
     this.videosBasePath = videosPath;
+    // Ensure the videos directory exists for filesystem storage
+    if (!fs.existsSync(this.videosBasePath)) {
+      fs.mkdirSync(this.videosBasePath, { recursive: true });
+      console.log(`Created videos directory: ${this.videosBasePath}`);
+    }
   }
 
   async create(videoId: string, sourcePath: string): Promise<void> {
