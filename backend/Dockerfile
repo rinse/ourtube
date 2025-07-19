@@ -14,19 +14,22 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache ffmpeg  \
- && addgroup -g 1001 -S nodejs \
- && adduser -S nodejs -u 1001
+RUN apk add --no-cache ffmpeg
 
-COPY package*.json ./
+COPY --chown=node:node package*.json ./
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --omit=dev && \
-    npm cache clean --force \
- && mkdir -p uploads videos \
- && chown -R nodejs:nodejs uploads videos
+ENV WORK_DIR=.workdir
 
-USER nodejs
-EXPOSE 4000
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --omit=dev \
+ && npm cache clean --force \
+ && mkdir -p .workdir/uploads \
+ && mkdir -p .workdir/conversion \
+ && chown -R node:node .workdir \
+ && chmod 775 .workdir \
+ && chmod 775 .workdir/uploads \
+ && chmod 775 .workdir/conversion
+
+USER node
 CMD ["node", "dist/app.js"]

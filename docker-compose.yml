@@ -4,15 +4,14 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: videoplayer-backend
-#    ports:
-#      - "4000:4000"
     volumes:
-      - ./backend/.workdir:/app/.workdir
+      - ./backend/.workdir/videos.s3.db:/app/.workdir/videos.s3.db:rw
+      - videoplayer-uploads:/app/.workdir/uploads:rw
+      - videoplayer-conversion:/app/.workdir/conversion:rw
     env_file:
       - ./backend/.env
     environment:
       - NODE_ENV=production
-      - WORK_DIR=.workdir
     networks:
       - videoplayer-network
     restart: always
@@ -35,3 +34,7 @@ services:
 networks:
   videoplayer-network:
     driver: bridge
+
+volumes:
+  videoplayer-uploads:
+  videoplayer-conversion:
