@@ -3,11 +3,10 @@ import fs from 'fs';
 
 const getWorkDir = (): string => {
   const workDir = process.env.WORK_DIR || path.join(__dirname, '..', '.workdir');
-  
+  console.log("Using work directory:", workDir);
   if (!fs.existsSync(workDir)) {
     fs.mkdirSync(workDir, { recursive: true });
   }
-  
   return workDir;
 };
 
@@ -36,7 +35,9 @@ export const config = {
   
   get databasePath(): string {
     const dbFilename = process.env.DB_FILENAME ?? 'videos.db';
-    return path.join(this.workDir, dbFilename);
+    const dbFilePath = path.join(this.workDir, dbFilename);
+    console.log("Using database file path:", dbFilePath);
+    return dbFilePath;
   }
 };
 

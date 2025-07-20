@@ -1,5 +1,4 @@
 import express, { Request, Response, NextFunction } from 'express';
-import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import { database, VideoMetadata } from './database';

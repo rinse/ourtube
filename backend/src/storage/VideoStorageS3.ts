@@ -120,7 +120,6 @@ export class VideoStorageS3 implements VideoStorage {
         const cached = this.manifestCache.get(cacheKey);
         
         if (cached) {
-          console.log(`Serving index.m3u8 from cache for video ${videoId}`);
           const stream = Readable.from(cached.content);
           return { stream, mime: cached.mime };
         }
@@ -153,7 +152,6 @@ export class VideoStorageS3 implements VideoStorage {
         // Cache the manifest (typical size is <5KB)
         const cacheKey = `${videoId}/index.m3u8`;
         this.manifestCache.set(cacheKey, { content, mime });
-        console.log(`Cached index.m3u8 for video ${videoId} (size: ${content.length} bytes)`);
         
         // Return a new readable stream from the buffer
         return { stream: Readable.from(content), mime };

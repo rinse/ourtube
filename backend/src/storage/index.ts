@@ -1,4 +1,3 @@
-import path from 'path';
 import { VideoStorage } from './VideoStorage';
 import { VideoStorageFileSystem } from './VideoStorageFileSystem';
 import { VideoStorageS3 } from './VideoStorageS3';
