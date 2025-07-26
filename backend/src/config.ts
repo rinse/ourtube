@@ -38,6 +38,10 @@ export const config = {
     const dbFilePath = path.join(this.workDir, dbFilename);
     console.log("Using database file path:", dbFilePath);
     return dbFilePath;
+  },
+  
+  get openaiApiKey(): string | undefined {
+    return process.env.OPENAI_API_KEY;
   }
 };
 

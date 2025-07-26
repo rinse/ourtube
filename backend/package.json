@@ -20,6 +20,7 @@
     "fp-ts": "^2.16.10",
     "io-ts": "^2.2.22",
     "multer": "^2.0.1",
+    "openai": "^5.10.2",
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, ChangeEvent, FormEvent } from 'react'
+import { useState, ChangeEvent, FormEvent, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Header from '../components/Header'
 
@@ -11,6 +11,7 @@ export default function UploadPage() {
   const [title, setTitle] = useState('')
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isSuggestingTitle, setIsSuggestingTitle] = useState(false)
 
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -18,8 +19,39 @@ export default function UploadPage() {
       setSelectedFile(file)
       setFilePath(file.name)
       setError(null)
+      setTitle('') // Reset title when new file is selected
     }
   }
+
+  // Fetch title suggestion when a file is selected
+  useEffect(() => {
+    if (!selectedFile || title) return // Don't suggest if title already entered
+
+    const fetchTitleSuggestion = async () => {
+      setIsSuggestingTitle(true)
+      try {
+        const response = await fetch('/api/suggest-video-title', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ fileName: selectedFile.name })
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setTitle(data.suggestedTitle)
+        }
+      } catch (err) {
+        console.error('Failed to fetch title suggestion:', err)
+        // Don't show error for title suggestion failure, it's non-critical
+      } finally {
+        setIsSuggestingTitle(false)
+      }
+    }
+
+    fetchTitleSuggestion()
+  }, [selectedFile])
 
   const handleUpload = async (e: FormEvent) => {
     e.preventDefault()
@@ -111,14 +143,20 @@ export default function UploadPage() {
             <div>
               <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
                 Video Title (optional)
+                {isSuggestingTitle && (
+                  <span className="ml-2 text-sm text-blue-600">
+                    Suggesting title...
+                  </span>
+                )}
               </label>
               <input
                 type="text"
                 id="title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Enter video title (uses filename if empty)"
+                placeholder={isSuggestingTitle ? "Generating suggestion..." : "Enter video title (uses filename if empty)"}
                 className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                disabled={isSuggestingTitle}
               />
             </div>
 
