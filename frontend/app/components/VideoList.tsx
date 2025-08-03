@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { parseHLSDuration, formatDuration } from '../utils/video-duration';
+import DeleteVideoDialog from './DeleteVideoDialog';
 
 interface Video {
   id: string;
@@ -24,6 +25,7 @@ export default function VideoList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [durations, setDurations] = useState<Record<string, number | null>>({});
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; video: Video | null }>({ isOpen: false, video: null });
 
   // Fetch durations for ready videos
   const fetchDurations = useCallback(async (videos: Video[]) => {
@@ -43,6 +45,27 @@ export default function VideoList() {
       setDurations(prev => ({ ...prev, ...newDurations }));
     }
   }, [durations]);
+
+  const handleDeleteVideo = async () => {
+    if (!deleteDialog.video) return;
+
+    try {
+      const response = await fetch(`/api/videos/${deleteDialog.video.id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete video');
+      }
+
+      // Remove video from the list
+      setVideos(prev => prev.filter(v => v.id !== deleteDialog.video!.id));
+      setDeleteDialog({ isOpen: false, video: null });
+    } catch (error) {
+      console.error('Error deleting video:', error);
+      alert('Failed to delete video. Please try again.');
+    }
+  };
 
   useEffect(() => {
     let intervalId: NodeJS.Timeout | null = null;
@@ -143,8 +166,9 @@ export default function VideoList() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-      {videos.map((video) => {
+    <>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+        {videos.map((video) => {
         const isReady = video.status === 'ready';
         const isConverting = video.status === 'converting';
         
@@ -262,12 +286,28 @@ export default function VideoList() {
             </div>
             
             {/* Status Badge */}
-            <div className={`absolute top-2 right-2 px-2 py-1 rounded-full text-xs font-medium ${
-              isReady ? 'bg-green-100 text-green-800' : 
-              isConverting ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
-            }`}>
-              {isReady ? 'Ready' : isConverting ? 'Converting' : 'Failed'}
-            </div>
+            {video.status === 'failed' ? (
+              <button
+                className="absolute top-2 right-2 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 hover:bg-red-200 transition-colors cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteDialog({ isOpen: true, video });
+                }}
+              >
+                <span className="flex items-center">
+                  Failed
+                  <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </span>
+              </button>
+            ) : (
+              <div className={`absolute top-2 right-2 px-2 py-1 rounded-full text-xs font-medium ${
+                video.status === 'ready' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+              }`}>
+                {video.status === 'ready' ? 'Ready' : 'Converting'}
+              </div>
+            )}
           </div>
           
           {/* Video Info */}
@@ -308,6 +348,14 @@ export default function VideoList() {
           </div>
         );
       })}
-    </div>
+      </div>
+      
+      <DeleteVideoDialog
+        isOpen={deleteDialog.isOpen}
+        videoTitle={deleteDialog.video?.title || ''}
+        onConfirm={handleDeleteVideo}
+        onCancel={() => setDeleteDialog({ isOpen: false, video: null })}
+      />
+    </>
   );
 }
