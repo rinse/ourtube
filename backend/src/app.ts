@@ -30,14 +30,14 @@ const openai = config.openaiApiKey ? new OpenAI({
 const upload = multer({
   dest: config.uploadsDir,
   limits: {
-    fileSize: 5 * 1024 * 1024 * 1024 // 5GB max file size
+    fileSize: 10 * 1024 * 1024 * 1024 // 10 GB at most
   },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (req, file, callback) => {
     // Accept video files only
     if (file.mimetype.startsWith('video/')) {
-      cb(null, true);
+      callback(null, true);
     } else {
-      cb(new Error('Only video files are allowed'));
+      callback(new Error('Only video files are allowed'));
     }
   }
 });
@@ -273,11 +273,36 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
       status: 'converting'
     } satisfies UploadResponse);
   } catch (error) {
-    console.error('Upload error:', error);
+    console.error('Upload processing failed:', error);
+    
+    // Log detailed error information
+    if (error instanceof Error) {
+      console.error('  Error type:', error.constructor.name);
+      console.error('  Error message:', error.message);
+      if (error.stack) {
+        const stackLines = error.stack.split('\n').slice(0, 5);
+        console.error('  Stack trace:\n', stackLines.join('\n'));
+      }
+    }
+    
+    // Log request details for debugging
+    if (req.file) {
+      console.error('  File details:', {
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        path: req.file.path
+      });
+    }
     
     // Clean up uploaded file on error
     if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
+      try {
+        fs.unlinkSync(req.file.path);
+        console.log('  Cleaned up uploaded file after error');
+      } catch (cleanupError) {
+        console.error('  Failed to clean up uploaded file:', cleanupError);
+      }
     }
     
     res.status(500).json({
