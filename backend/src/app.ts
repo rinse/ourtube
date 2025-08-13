@@ -15,16 +15,12 @@ import {
   DeleteVideoResponse,
   VideoItem
 } from './api-schemas';
-import OpenAI from 'openai';
+import { createGenAI } from './genai/GenAI';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 const storage = getVideoStorage();
-
-// Initialize OpenAI client if API key is available
-const openai = config.openaiApiKey ? new OpenAI({
-  apiKey: config.openaiApiKey
-}) : null;
+const genAI = createGenAI();
 
 // Configure multer for video uploads
 const upload = multer({
@@ -412,53 +408,7 @@ app.post('/api/suggest-video-title', async (req: Request, res: Response): Promis
       } satisfies ApiErrorResponse);
       return;
     }
-
-    // Check if OpenAI is configured
-    if (!openai) {
-      res.status(503).json({
-        error: 'Service unavailable',
-        message: 'OpenAI API key not configured'
-      } satisfies ApiErrorResponse);
-      return;
-    }
-
-    // Get existing video titles for context
-    const existingVideos = await database.listVideos();
-    const existingTitles = existingVideos.map(v => v.title).slice(0, 10); // Get last 10 titles for context
-
-    // Create prompt
-    const systemPrompt = {
-      role: 'system',
-      content: `You are a helpful assistant that suggests clear, descriptive video titles based on filenames and existing naming patterns.
- Given a video filename and some existing video titles in the library, suggest a clear, descriptive title for the new video.
-
-Instructions:
-- Create a title that's descriptive and follows the naming pattern of existing videos (if any)
-- Remove file extensions from the filename
-- Capitalize appropriately
-- Keep it concise but informative
-- Return ONLY the suggested title itself, nothing else
-- Do NOT include phrases like "Title suggestion:", "Suggested title:", or any other prefixes
-- Do NOT use quotes around the title
-- Just return the plain title text`,
-    } as const;
-
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        systemPrompt,
-        {
-          role: 'user',
-          content: `Filename: ${fileName}.
-Existing video titles in the library:
-${existingTitles.length > 0 ? existingTitles.map(t => `- ${t}`).join('\n') : '(No existing videos yet)'}`,
-        }
-      ],
-      temperature: 0.7,
-      max_tokens: 100
-    });
-
-    let suggestedTitle = completion.choices[0]?.message?.content?.trim();
+    const suggestedTitle = await genAI.suggestVideoTitle(fileName);
 
     if (!suggestedTitle) {
       res.status(500).json({

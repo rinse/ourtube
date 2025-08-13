@@ -24,7 +24,7 @@ services:
         BACKEND_URL: http://backend:4000
     container_name: videoplayer-frontend
     ports:
-      - "3000:3000"
+      - "3010:3000"
     environment:
       - NODE_ENV=production
     networks:

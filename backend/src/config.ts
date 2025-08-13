@@ -42,7 +42,11 @@ export const config = {
   
   get openaiApiKey(): string | undefined {
     return process.env.OPENAI_API_KEY;
-  }
+  },
+
+  get lmStudioHost(): string {
+    return process.env.LM_STUDIO_HOST || 'http://127.0.0.1:1234/v1';
+  },
 };
 
 console.log(`Using work directory: ${config.workDir}`);
