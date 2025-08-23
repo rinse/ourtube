@@ -27,6 +27,7 @@ export default function VideoPage({ params }: PageProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isSuggesting, setIsSuggesting] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'error' | 'success' } | null>(null);
 
   useEffect(() => {
@@ -127,6 +128,34 @@ export default function VideoPage({ params }: PageProps) {
     }
   };
 
+  const handleSuggestTitle = async () => {
+    if (!videoInfo?.title) return;
+    
+    setIsSuggesting(true);
+    try {
+      const response = await fetch(`/api/suggest-video-title`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ fileName: videoInfo.title }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.suggestedTitle) {
+        setEditTitle(data.suggestedTitle);
+        setToast({ message: 'Title suggestion generated', type: 'success' });
+      } else {
+        setToast({ message: data.error || 'Failed to get title suggestion', type: 'error' });
+      }
+    } catch {
+      setToast({ message: 'Network error occurred', type: 'error' });
+    } finally {
+      setIsSuggesting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white sm:bg-gray-100">
       <Header />
@@ -155,52 +184,72 @@ export default function VideoPage({ params }: PageProps) {
                   )}
                   
                   <div className="p-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                      <div className="flex-1">
-                        {isEditing ? (
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="text"
-                              value={editTitle}
-                              onChange={(e) => setEditTitle(e.target.value)}
-                              className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-base sm:text-lg font-semibold"
-                              disabled={isUpdating}
-                            />
-                            <button
-                              onClick={handleEditConfirm}
-                              disabled={isUpdating || !editTitle.trim()}
-                              className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
-                            >
-                              {isUpdating ? (
-                                <>
-                                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                  </svg>
-                                  Saving...
-                                </>
-                              ) : (
-                                <>
-                                  <span className="mr-1">✅</span>
-                                  Confirm
-                                </>
-                              )}
-                            </button>
-                            <button
-                              onClick={handleEditCancel}
-                              disabled={isUpdating}
-                              className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
-                            >
-                              <span className="mr-1">✕</span>
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <h2 className="text-lg sm:text-xl font-semibold text-gray-800">{videoInfo?.title}</h2>
-                        )}
+                    {isEditing ? (
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <input
+                          type="text"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          className="w-full sm:flex-1 px-3 py-2 border border-gray-300 rounded-md text-base sm:text-lg font-semibold"
+                          disabled={isUpdating || isSuggesting}
+                        />
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={handleEditConfirm}
+                            disabled={isUpdating || isSuggesting || !editTitle.trim()}
+                            className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+                          >
+                            {isUpdating ? (
+                              <>
+                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Saving...
+                              </>
+                            ) : (
+                              <>
+                                <span className="mr-1">✅</span>
+                                Confirm
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={handleEditCancel}
+                            disabled={isUpdating || isSuggesting}
+                            className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+                          >
+                            <span className="mr-1">✕</span>
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleSuggestTitle}
+                            disabled={isUpdating || isSuggesting}
+                            className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50"
+                          >
+                            {isSuggesting ? (
+                              <>
+                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Suggesting...
+                              </>
+                            ) : (
+                              <>
+                                <span className="mr-1">✨</span>
+                                Suggest
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        {!isEditing && (
+                    ) : (
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div className="flex-1">
+                          <h2 className="text-lg sm:text-xl font-semibold text-gray-800">{videoInfo?.title}</h2>
+                        </div>
+                        <div className="flex items-center space-x-2">
                           <button
                             onClick={handleEditStart}
                             className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
@@ -208,16 +257,16 @@ export default function VideoPage({ params }: PageProps) {
                             <span className="mr-1">🖊</span>
                             Edit
                           </button>
-                        )}
-                        <button
-                          onClick={() => setShowDeleteConfirm(true)}
-                          className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                        >
-                          <span className="mr-1">🗑</span>
-                          Delete
-                        </button>
+                          <button
+                            onClick={() => setShowDeleteConfirm(true)}
+                            className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                          >
+                            <span className="mr-1">🗑</span>
+                            Delete
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </>
               )}

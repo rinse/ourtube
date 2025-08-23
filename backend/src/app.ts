@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
+import dotenv from 'dotenv';
 import fs from 'fs';
 import multer from 'multer';
 import { database, VideoMetadata } from './database';
@@ -16,6 +17,8 @@ import {
   VideoItem
 } from './api-schemas';
 import { createGenAI } from './genai/GenAI';
+
+dotenv.config({ path: './.env' });
 
 const app = express();
 const PORT = process.env.PORT || 4000;

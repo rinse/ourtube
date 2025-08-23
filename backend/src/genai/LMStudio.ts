@@ -20,6 +20,7 @@ Instructions:
 } as const;
 
 export function LMStudioGenAI(): GenAI {
+    console.log('LMStudioGenAI using host:', config.lmStudioHost);
     const openai = new OpenAI({ baseURL: config.lmStudioHost, apiKey: "" });
     return {
         suggestVideoTitle: async (filename: string) => {
@@ -27,6 +28,7 @@ export function LMStudioGenAI(): GenAI {
             const existingTitles = existingVideos.map(v => v.title).slice(0, 100);
             const completion = await openai.chat.completions.create({
                 model: 'openai/gpt-oss-20b',
+                // model: 'openai/gpt-oss-120b',
                 messages: [
                     systemPrompt,
                     {

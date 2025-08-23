@@ -45,7 +45,7 @@ export const config = {
   },
 
   get lmStudioHost(): string {
-    return process.env.LM_STUDIO_HOST || 'http://127.0.0.1:1234/v1';
+    return process.env.LM_STUDIO_HOST ?? 'http://127.0.0.1:1234/v1';
   },
 };
 
