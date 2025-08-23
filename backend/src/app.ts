@@ -5,7 +5,6 @@ import multer from 'multer';
 import { database, VideoMetadata } from './database';
 import { generateVideoId } from './video-processor';
 import { getVideoStorage } from './storage';
-import { config } from './config';
 import {
   ApiErrorResponse,
   ApiStatusResponse,
@@ -14,75 +13,29 @@ import {
   UploadResponse,
   UpdateVideoResponse,
   DeleteVideoResponse,
-  VideoItem
+  VideoItem,
+  SuggestVideoTitleResponse
 } from './api-schemas';
 import { createGenAI } from './genai/GenAI';
+import { multerOptions } from './multer/multer';
 
 dotenv.config({ path: './.env' });
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT ?? 4000;
 const storage = getVideoStorage();
 const genAI = createGenAI();
 
 // Configure multer for video uploads
-const upload = multer({
-  dest: config.uploadsDir,
-  limits: {
-    fileSize: 10 * 1024 * 1024 * 1024 // 10 GB at most
-  },
-  fileFilter: (req, file, callback) => {
-    // Accept video files only
-    if (file.mimetype.startsWith('video/')) {
-      callback(null, true);
-    } else {
-      callback(new Error('Only video files are allowed'));
-    }
-  }
-});
-
+const upload = multer(multerOptions);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.get('/api', (req: Request, res: Response) => {
-  const response: ApiStatusResponse = {
-    message: 'Welcome to Video Streaming Service API',
-    status: 'running',
-    timestamp: new Date().toISOString()
-  };
-  res.json(response);
-});
-
-app.get('/api/health', (req: Request, res: Response) => {
-  const response: ApiStatusResponse = {
-    status: 'healthy',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString()
-  };
-  res.json(response);
-});
-
-
-
 // Get list of all videos
 app.get('/api/videos', async (req: Request, res: Response): Promise<void> => {
+  let videos: VideoMetadata[];
   try {
-    const videos = await database.listVideos();
-    const videoList: VideoItem[] = videos.map(video => {
-      return {
-        id: video.id,
-        title: video.title,
-        hlsUrl: `/api/videos/${video.id}/index.m3u8`,
-        status: video.status,
-        thumbnailUrl: video.has_thumbnail ? `/api/videos/${video.id}/thumbnail.png` : null
-      };
-    });
-    
-    const response: VideoListResponse = {
-      videos: videoList,
-      count: videoList.length
-    };
-    res.json(response);
+    videos = await database.listVideos();
   } catch (error) {
     console.error('Error fetching videos:', error);
     const errorResponse: ApiErrorResponse = {
@@ -90,30 +43,41 @@ app.get('/api/videos', async (req: Request, res: Response): Promise<void> => {
       message: 'Failed to fetch videos'
     };
     res.status(500).json(errorResponse);
+    return;
   }
+  const videoItems = videos.map(video => {
+    return {
+      id: video.id,
+      title: video.title,
+      hlsUrl: `/api/videos/${video.id}/index.m3u8`,
+      status: video.status,
+      thumbnailUrl: video.has_thumbnail ? `/api/videos/${video.id}/thumbnail.png` : undefined,
+    } satisfies VideoItem;
+  });
+  res.json({
+    videos: videoItems,
+    count: videoItems.length,
+  } satisfies VideoListResponse);
 });
 
 // Get video metadata
-app.get('/api/videos/:videoid', async (req: Request, res: Response): Promise<void> => {
-  const { videoid } = req.params;
-  
+app.get('/api/videos/:videoId', async (req: Request, res: Response): Promise<void> => {
+  const { videoId } = req.params;
   try {
-    const video = await database.getVideoMetadata(videoid);
-    
+    const video = await database.getVideoMetadata(videoId);
     if (!video) {
       res.status(404).json({
         error: 'Video not found',
-        message: `Video with ID ${videoid} does not exist`
+        message: `Video with ID ${videoId} does not exist`
       } satisfies ApiErrorResponse);
       return;
     }
-
     res.json({
       id: video.id,
       title: video.title,
       hlsUrl: `/api/videos/${video.id}/index.m3u8`,
       status: video.status,
-      thumbnailUrl: video.has_thumbnail ? `/api/videos/${video.id}/thumbnail.png` : null
+      thumbnailUrl: video.has_thumbnail ? `/api/videos/${video.id}/thumbnail.png` : undefined,
     } satisfies VideoInfoResponse);
   } catch (error) {
     console.error('Error fetching video info:', error);
@@ -125,100 +89,95 @@ app.get('/api/videos/:videoid', async (req: Request, res: Response): Promise<voi
 });
 
 // Serve HLS manifest files (.m3u8)
-app.get('/api/videos/:videoid/index.m3u8', async (req: Request, res: Response): Promise<void> => {
-  const { videoid } = req.params;
-  
+app.get('/api/videos/:videoId/index.m3u8', async (req: Request, res: Response): Promise<void> => {
+  const { videoId } = req.params;
+  let video: VideoMetadata;
   try {
-    const video = await database.getVideoMetadata(videoid);
-    
-    if (!video) {
+    const metadata = await database.getVideoMetadata(videoId);
+    if (!metadata) {
       res.status(404).json({
         error: 'Video not found',
-        message: `Video with ID ${videoid} does not exist`
+        message: `Video with ID ${videoId} does not exist`
       } satisfies ApiErrorResponse);
       return;
     }
-
-    if (video.status !== 'ready') {
-      res.status(503).json({
-        error: 'Video not ready',
-        message: `Video is still ${video.status}`
-      } satisfies ApiErrorResponse);
-      return;
-    }
-
-    try {
-      const { stream, mime } = await storage.getFile(video.id, 'index.m3u8');
-      
-      // Read the manifest content
-      const chunks: Buffer[] = [];
-      for await (const chunk of stream) {
-        chunks.push(chunk);
-      }
-      const manifestContent = Buffer.concat(chunks).toString('utf8');
-      
-      res.setHeader('Content-Type', mime);
-      res.setHeader('Cache-Control', 'no-cache');
-      res.send(manifestContent);
-    } catch (error) {
-      res.status(404).json({
-        error: 'Video file not found',
-        message: `HLS manifest file for video ${videoid} does not exist`
-      } satisfies ApiErrorResponse);
-      return;
-    }
+    video = metadata;
   } catch (error) {
     console.error('Error serving manifest:', error);
     res.status(500).json({
       error: 'Database error',
       message: 'Failed to fetch video information'
     });
+    return;
+  }
+  if (video.status !== 'ready') {
+    res.status(503).json({
+      error: 'Video not ready',
+      message: `Video is still ${video.status}`
+    } satisfies ApiErrorResponse);
+    return;
+  }
+  try {
+    const { stream, mime } = await storage.getFile(video.id, 'index.m3u8');
+    // Read the manifest content
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+    const manifestContent = Buffer.concat(chunks).toString('utf8');
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(manifestContent);
+  } catch (error) {
+    res.status(404).json({
+      error: 'Video file not found',
+      message: `HLS manifest file for video ${videoId} does not exist`
+    } satisfies ApiErrorResponse);
+    return;
   }
 });
 
 // Serve HLS segment files (.ts)
-app.get('/api/videos/:videoid/:filename', async (req: Request, res: Response): Promise<void> => {
-  const { videoid, filename } = req.params;
-  
+app.get('/api/videos/:videoId/:filename', async (req: Request, res: Response): Promise<void> => {
+  const { videoId, filename } = req.params;
+  let video: VideoMetadata;
   try {
-    const video = await database.getVideoMetadata(videoid);
-    
-    if (!video) {
+    const metadata = await database.getVideoMetadata(videoId);
+    if (!metadata) {
       res.status(404).json({
         error: 'Video not found',
-        message: `Video with ID ${videoid} does not exist`
+        message: `Video with ID ${videoId} does not exist`
       } satisfies ApiErrorResponse);
       return;
     }
-
-    // Validate file extension for security
-    if (!filename.endsWith('.ts') && !filename.endsWith('.vtt') && !filename.endsWith('.m3u8') && filename !== 'thumbnail.png') {
-      res.status(400).json({
-        error: 'Invalid file type',
-        message: 'Only .ts, .vtt, .m3u8 files and thumbnail.png are allowed'
-      } satisfies ApiErrorResponse);
-      return;
-    }
-
-    try {
-      const { stream, mime } = await storage.getFile(video.id, filename);
-      
-      res.setHeader('Content-Type', mime);
-      res.setHeader('Cache-Control', 'public, max-age=3600');
-      stream.pipe(res);
-    } catch (error) {
-      res.status(404).json({
-        error: 'File not found',
-        message: `File ${filename} for video ${videoid} does not exist`
-      } satisfies ApiErrorResponse);
-      return;
-    }
+    video = metadata;
   } catch (error) {
     console.error('Error serving file:', error);
     res.status(500).json({
       error: 'Database error',
       message: 'Failed to fetch video information'
     });
+    return;
+  }
+  // Validate file extension for security
+  if (!filename.endsWith('.ts') && !filename.endsWith('.vtt') && !filename.endsWith('.m3u8') && filename !== 'thumbnail.png') {
+    res.status(400).json({
+      error: 'Invalid file type',
+      message: 'Only .ts, .vtt, .m3u8 files and thumbnail.png are allowed'
+    } satisfies ApiErrorResponse);
+    return;
+  }
+  try {
+    const { stream, mime } = await storage.getFile(video.id, filename);
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    stream.pipe(res);
+  } catch (error) {
+    res.status(404).json({
+      error: 'File not found',
+      message: `File ${filename} for video ${videoId} does not exist`
+    } satisfies ApiErrorResponse);
+    return;
   }
 });
 
@@ -232,25 +191,20 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
       } satisfies ApiErrorResponse);
       return;
     }
-
     const title = req.body.title || req.file.originalname.replace(/\.[^/.]+$/, '');
-    
     // Generate video ID from file content
     const videoId = await generateVideoId(req.file.path);
-    
     // Check if video already exists
     const existingVideo = await database.getVideoMetadata(videoId);
     if (existingVideo) {
       // Delete uploaded file
       fs.unlinkSync(req.file.path);
-      
       res.status(409).json({
         error: 'Video already exists',
         message: `This video has already been uploaded with the title: "${existingVideo.title}"`
       } satisfies ApiErrorResponse);
       return;
     }
-    
     // Save video metadata
     const metadata: VideoMetadata = {
       id: videoId,
@@ -259,12 +213,9 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
       created_at: new Date().toISOString(),
       has_thumbnail: false
     };
-    
     await database.saveVideoMetadata(metadata);
-    
     // Start HLS conversion in background
     storage.create(videoId, req.file.path);
-    
     res.json({
       message: 'Video uploaded successfully',
       videoId: videoId,
@@ -273,7 +224,6 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
     } satisfies UploadResponse);
   } catch (error) {
     console.error('Upload processing failed:', error);
-    
     // Log detailed error information
     if (error instanceof Error) {
       console.error('  Error type:', error.constructor.name);
@@ -283,7 +233,6 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
         console.error('  Stack trace:\n', stackLines.join('\n'));
       }
     }
-    
     // Log request details for debugging
     if (req.file) {
       console.error('  File details:', {
@@ -293,7 +242,6 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
         path: req.file.path
       });
     }
-    
     // Clean up uploaded file on error
     if (req.file && fs.existsSync(req.file.path)) {
       try {
@@ -303,7 +251,6 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
         console.error('  Failed to clean up uploaded file:', cleanupError);
       }
     }
-    
     res.status(500).json({
       error: 'Upload failed',
       message: error instanceof Error ? error.message : 'Failed to process upload'
@@ -311,14 +258,12 @@ app.post('/api/upload', upload.single('video'), async (req: Request, res: Respon
   }
 });
 
-
 // Delete video endpoint
-app.delete('/api/videos/:videoid', async (req: Request, res: Response): Promise<void> => {
-  const { videoid } = req.params;
-  
+app.delete('/api/videos/:videoId', async (req: Request, res: Response): Promise<void> => {
+  const { videoId } = req.params;
   try {
     // Check if video exists
-    const video = await database.getVideoMetadata(videoid);
+    const video = await database.getVideoMetadata(videoId);
     if (!video) {
       res.status(404).json({
         error: 'Video not found',
@@ -326,9 +271,8 @@ app.delete('/api/videos/:videoid', async (req: Request, res: Response): Promise<
       } satisfies ApiErrorResponse);
       return;
     }
-
     // Delete from database
-    const dbDeleted = await database.deleteVideo(videoid);
+    const dbDeleted = await database.deleteVideo(videoId);
     if (!dbDeleted) {
       res.status(500).json({
         error: 'Database error',
@@ -336,13 +280,11 @@ app.delete('/api/videos/:videoid', async (req: Request, res: Response): Promise<
       } satisfies ApiErrorResponse);
       return;
     }
-
     // Delete video files
     const deleted = await storage.delete(video.id);
     if (!deleted) {
       console.warn(`Failed to delete video directory for ${video.id}`);
     }
-
     res.json({ message: 'ok' } satisfies DeleteVideoResponse);
   } catch (error) {
     console.error('Delete error:', error);
@@ -354,10 +296,9 @@ app.delete('/api/videos/:videoid', async (req: Request, res: Response): Promise<
 });
 
 // Update video title endpoint
-app.put('/api/videos/:videoid', async (req: Request, res: Response): Promise<void> => {
-  const { videoid } = req.params;
+app.put('/api/videos/:videoId', async (req: Request, res: Response): Promise<void> => {
+  const { videoId } = req.params;
   const { title } = req.body;
-  
   try {
     // Validate input
     if (!title || typeof title !== 'string') {
@@ -367,9 +308,8 @@ app.put('/api/videos/:videoid', async (req: Request, res: Response): Promise<voi
       } satisfies ApiErrorResponse);
       return;
     }
-
     // Check if video exists
-    const video = await database.getVideoMetadata(videoid);
+    const video = await database.getVideoMetadata(videoId);
     if (!video) {
       res.status(404).json({
         error: 'Video not found',
@@ -377,9 +317,8 @@ app.put('/api/videos/:videoid', async (req: Request, res: Response): Promise<voi
       } satisfies ApiErrorResponse);
       return;
     }
-
     // Update title
-    const updated = await database.updateVideoTitle(videoid, title);
+    const updated = await database.updateVideoTitle(videoId, title);
     if (!updated) {
       res.status(500).json({
         error: 'Database error',
@@ -387,7 +326,6 @@ app.put('/api/videos/:videoid', async (req: Request, res: Response): Promise<voi
       } satisfies ApiErrorResponse);
       return;
     }
-
     res.json({ message: 'ok' } satisfies UpdateVideoResponse);
   } catch (error) {
     console.error('Update error:', error);
@@ -401,7 +339,6 @@ app.put('/api/videos/:videoid', async (req: Request, res: Response): Promise<voi
 // Suggest video title using ChatGPT
 app.post('/api/suggest-video-title', async (req: Request, res: Response): Promise<void> => {
   const { fileName } = req.body;
-  
   try {
     // Validate input
     if (!fileName || typeof fileName !== 'string') {
@@ -412,7 +349,6 @@ app.post('/api/suggest-video-title', async (req: Request, res: Response): Promis
       return;
     }
     const suggestedTitle = await genAI.suggestVideoTitle(fileName);
-
     if (!suggestedTitle) {
       res.status(500).json({
         error: 'Generation failed',
@@ -420,10 +356,9 @@ app.post('/api/suggest-video-title', async (req: Request, res: Response): Promis
       } satisfies ApiErrorResponse);
       return;
     }
-
     res.json({
       suggestedTitle
-    });
+    } satisfies SuggestVideoTitleResponse);
   } catch (error) {
     console.error('Title suggestion error:', error);
     res.status(500).json({
