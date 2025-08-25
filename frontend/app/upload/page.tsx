@@ -121,7 +121,7 @@ export default function UploadPage() {
                   <input
                     type="file"
                     id="fileInput"
-                    accept="video/*"
+                    accept="video/*,.mkv"
                     onChange={handleFileSelect}
                     className="hidden"
                   />
