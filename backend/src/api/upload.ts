@@ -1,16 +1,16 @@
 import { UploadResponse } from "../api-schemas";
-import { database, VideoMetadata } from "../database";
-import { VideoStorage } from "../storage";
+import { Database, VideoMetadata } from "../database";
+import { VideoStorage } from "../storage/createVideoStorage";
 import { unlink } from "../utils";
 import { generateVideoId } from "../video-processor";
 
 export async function uploadVideo(
-  deps: { storage: VideoStorage },
+  deps: { storage: VideoStorage, database: Database },
   title: string,
   file: Express.Multer.File,
 ): Promise<UploadResponse | null> {
   const videoId = await generateVideoId(file.path);
-  const existingVideo = await database.getVideoMetadata(videoId);
+  const existingVideo = await deps.database.getVideoMetadata(videoId);
   if (existingVideo != null) {
     if (existingVideo.status !== 'failed') {
       // Do nothing if video already exists and is not failed
@@ -26,7 +26,7 @@ export async function uploadVideo(
     created_at: new Date().toISOString(),
     has_thumbnail: false
   };
-  await database.saveVideoMetadata(metadata);
+  await deps.database.saveVideoMetadata(metadata);
   deps.storage.create(videoId, file.path); // start conversion in background
   return {
     message: 'Video uploaded successfully',

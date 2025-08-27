@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { GenAI } from './GenAI';
-import { database } from '../database';
+import { Database } from '../database';
 
 const systemPrompt = {
     role: 'system',
@@ -18,7 +18,7 @@ Instructions:
 - Just return the plain title text`,
 } as const;
 
-export function OpenAIGenAI(apiKey: string): GenAI {
+export function OpenAIGenAI(database: Database, apiKey: string): GenAI {
     const openai = new OpenAI({ apiKey: apiKey });
     return {
         suggestVideoTitle: async (filename: string) => {

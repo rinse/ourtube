@@ -4,6 +4,8 @@ import { promisify } from 'util';
 import { Readable } from 'stream';
 import { VideoStorage } from './VideoStorage';
 import { getMimeType, updateVideoStatus, updateVideoThumbnailStatus, generateThumbnail, convertVideoToHLS, probeVideoInfo } from './VideoStorageUtils';
+import { Database } from '../database';
+import { deepStrictEqual } from 'assert';
 
 const fsExists = promisify(fs.exists);
 const fsReaddir = promisify(fs.readdir);
@@ -13,14 +15,11 @@ const fsUnlink = promisify(fs.unlink);
 
 export class VideoStorageFileSystem implements VideoStorage {
   private videosBasePath: string;
+  private database: Database;
 
-  constructor(videosPath: string) {
+  constructor(database: Database, videosPath: string) {
+    this.database = database;
     this.videosBasePath = videosPath;
-    // Ensure the videos directory exists for filesystem storage
-    if (!fs.existsSync(this.videosBasePath)) {
-      fs.mkdirSync(this.videosBasePath, { recursive: true });
-      console.log(`Created videos directory: ${this.videosBasePath}`);
-    }
   }
 
   async create(videoId: string, sourcePath: string): Promise<void> {
@@ -146,14 +145,14 @@ export class VideoStorageFileSystem implements VideoStorage {
           
           // Update thumbnail status in database
           try {
-            await updateVideoThumbnailStatus(videoId, thumbnailGenerated);
+            await updateVideoThumbnailStatus({ database: this.database }, videoId, thumbnailGenerated);
           } catch (error) {
             console.error(`[VideoID: ${videoId}] Failed to update thumbnail status in database:`, error);
           }
           
           // Update video status in database
           try {
-            await updateVideoStatus(videoId, 'ready');
+            await updateVideoStatus({ database: this.database }, videoId, 'ready');
             console.log(`[VideoID: ${videoId}] Video status updated to 'ready' in database`);
           } catch (error) {
             console.error(`[VideoID: ${videoId}] Failed to update video status to 'ready':`, error);
@@ -198,7 +197,7 @@ export class VideoStorageFileSystem implements VideoStorage {
           
           // Update video status to failed in database
           try {
-            await updateVideoStatus(videoId, 'failed');
+            await updateVideoStatus({ database: this.database }, videoId, 'failed');
             console.log(`[VideoID: ${videoId}] Video status updated to 'failed' in database`);
           } catch (error) {
             console.error(`[VideoID: ${videoId}] Failed to update video status to 'failed':`, error);
@@ -223,7 +222,7 @@ export class VideoStorageFileSystem implements VideoStorage {
         
         // Update video status to failed in database
         try {
-          await updateVideoStatus(videoId, 'failed');
+          await updateVideoStatus({ database: this.database }, videoId, 'failed');
           console.log(`[VideoID: ${videoId}] Video status updated to 'failed' in database`);
         } catch (dbError) {
           console.error(`[VideoID: ${videoId}] Failed to update video status to 'failed':`, dbError);

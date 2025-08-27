@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
 import path from 'path';
-import { database } from '../database';
+import { Database } from '../database';
 
 export interface VideoInfo {
   duration?: string;
@@ -94,13 +94,13 @@ export function getMimeType(filename: string): string {
   return mimeTypes[ext] || 'application/octet-stream';
 }
 
-export async function updateVideoStatus(videoId: string, status: 'ready' | 'failed'): Promise<void> {
+export async function updateVideoStatus(deps: { database: Database }, videoId: string, status: 'ready' | 'failed'): Promise<void> {
   try {
-    const videoMetadata = await database.getVideoMetadata(videoId);
+    const videoMetadata = await deps.database.getVideoMetadata(videoId);
     if (videoMetadata) {
       const previousStatus = videoMetadata.status;
       videoMetadata.status = status;
-      await database.saveVideoMetadata(videoMetadata);
+      await deps.database.saveVideoMetadata(videoMetadata);
       console.log(`[VideoID: ${videoId}] Database status updated: ${previousStatus} -> ${status}`);
     } else {
       console.error(`[VideoID: ${videoId}] Cannot update status to '${status}' - video metadata not found in database`);
@@ -117,9 +117,9 @@ export async function updateVideoStatus(videoId: string, status: 'ready' | 'fail
   }
 }
 
-export async function updateVideoThumbnailStatus(videoId: string, hasThumbnail: boolean): Promise<void> {
+export async function updateVideoThumbnailStatus(deps: { database: Database }, videoId: string, hasThumbnail: boolean): Promise<void> {
   try {
-    await database.updateVideoThumbnailStatus(videoId, hasThumbnail);
+    await deps.database.updateVideoThumbnailStatus(videoId, hasThumbnail);
     console.log(`[VideoID: ${videoId}] Database thumbnail status updated: hasThumbnail=${hasThumbnail}`);
   } catch (error) {
     console.error(`[VideoID: ${videoId}] Database error while updating thumbnail status (hasThumbnail=${hasThumbnail}):`, error);

@@ -12,21 +12,29 @@ import path from 'path';
 import { promisify } from 'util';
 import { VideoStorage } from './VideoStorage';
 import { getMimeType, updateVideoStatus, updateVideoThumbnailStatus, generateThumbnail, convertVideoToHLS } from './VideoStorageUtils';
-import { config } from '../config';
+import { Database } from '../database';
 
 const fsUnlink = promisify(fs.unlink);
 const fsMkdir = promisify(fs.mkdir);
 const fsRmdir = promisify(fs.rmdir);
 
 export class VideoStorageS3 implements VideoStorage {
+  private database: Database;
   private s3Client: S3Client;
   private bucketName: string;
   private tempDir: string;
   private manifestCache: Map<string, { content: Buffer; mime: string }>;
 
-  constructor(bucketName: string, region: string) {
-    this.bucketName = bucketName;
-    const awsRegion = region;
+  constructor(
+    database: Database,
+    config: {
+      conversionDir: string,
+      s3BucketName: string,
+      awsRegion: string,
+    }) {
+    this.database = database;
+    this.bucketName = config.s3BucketName;
+    const awsRegion = config.awsRegion;
     this.s3Client = new S3Client({
       region: awsRegion,
     });
@@ -211,15 +219,15 @@ export class VideoStorageS3 implements VideoStorage {
             console.log(`Video files uploaded to S3 for ${videoId}`);
           } catch (error) {
             console.error('Failed to upload to S3:', error);
-            await updateVideoStatus(videoId, 'failed');
+            await updateVideoStatus({ database: this.database }, videoId, 'failed');
             return;
           }
           
           // Update thumbnail status in database
-          await updateVideoThumbnailStatus(videoId, thumbnailGenerated);
+          await updateVideoThumbnailStatus({ database: this.database }, videoId, thumbnailGenerated);
           
           // Update video status in database
-          await updateVideoStatus(videoId, 'ready');
+          await updateVideoStatus({ database: this.database }, videoId, 'ready');
           
           // Clean up
           await this.cleanupTempFiles(sourcePath, tempVideoDir);
@@ -229,13 +237,13 @@ export class VideoStorageS3 implements VideoStorage {
           const errorMessage = `FFmpeg exited with code ${code}: ${errorOutput}`;
           console.error(errorMessage);
           
-          await updateVideoStatus(videoId, 'failed');
+          await updateVideoStatus({ database: this.database }, videoId, 'failed');
           await this.cleanupTempFiles(sourcePath, tempVideoDir);
         }
       },
       async (error) => {
         console.error('FFmpeg error:', error);
-        await updateVideoStatus(videoId, 'failed');
+        await updateVideoStatus({ database: this.database }, videoId, 'failed');
         await this.cleanupTempFiles(sourcePath, tempVideoDir);
       }
     );

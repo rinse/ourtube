@@ -1,8 +1,8 @@
 import { VideoItem, VideoListResponse } from "../../api-schemas";
-import { database, VideoMetadata } from "../../database";
+import { Database, VideoMetadata } from "../../database";
 
-export async function listVideos(): Promise<VideoListResponse> {
-  let videos: VideoMetadata[] = await database.listVideos();
+export async function listVideos(deps: { database: Database }): Promise<VideoListResponse> {
+  let videos: VideoMetadata[] = await deps.database.listVideos();
   const videoItems = videos.map(video => {
     return {
       id: video.id,

@@ -1,8 +1,8 @@
 import { VideoInfoResponse } from "../../api-schemas";
-import { database } from "../../database";
+import { Database } from "../../database";
 
-export async function getVideo(videoId: string): Promise<VideoInfoResponse | null> {
-  const video = await database.getVideoMetadata(videoId);
+export async function getVideo(deps: { database: Database }, videoId: string): Promise<VideoInfoResponse | null> {
+  const video = await deps.database.getVideoMetadata(videoId);
   if (video == null) {
     return null;
   }

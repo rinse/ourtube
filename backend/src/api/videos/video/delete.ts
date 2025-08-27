@@ -1,15 +1,15 @@
-import { database } from "../../../database";
+import { Database } from "../../../database";
 import { VideoStorage } from "../../../storage/VideoStorage";
 
 export async function deleteVideo(
-  deps: { storage: VideoStorage },
+  deps: { storage: VideoStorage, database: Database },
   videoId: string,
 ): Promise<boolean> {
-  const video = await database.getVideoMetadata(videoId);
+  const video = await deps.database.getVideoMetadata(videoId);
   if (video == null) {
     return false;
   }
-  const dbDeleted = await database.deleteVideo(videoId);
+  const dbDeleted = await deps.database.deleteVideo(videoId);
   if (!dbDeleted) {
     return false;
   }

@@ -1,5 +1,5 @@
 import Stream from "stream";
-import { database, VideoMetadata } from "../../../database";
+import { Database, VideoMetadata } from "../../../database";
 import { VideoStorage } from "../../../storage/VideoStorage";
 import { IllegalArgumentError } from "../../../utils";
 
@@ -15,7 +15,7 @@ const allowedFileExtensions = ['.ts', '.vtt', '.m3u8'];
 const allowedFilenames = ['index.m3u8', 'thumbnail.png'];
 
 export async function getVideoFile(
-  deps: { storage: VideoStorage },
+  deps: { storage: VideoStorage, database: Database },
   videoId: string,
   filename: string,
 ): Promise<VideoFile | null> {
@@ -23,7 +23,7 @@ export async function getVideoFile(
     && !allowedFilenames.includes(filename)) {
     throw new IllegalArgumentError('Invalid file type');
   }
-  let metadata: VideoMetadata | null = await database.getVideoMetadata(videoId);
+  let metadata: VideoMetadata | null = await deps.database.getVideoMetadata(videoId);
   if (metadata == null) {
     return null;
   }

@@ -2,7 +2,6 @@ import sqlite3 from 'sqlite3';
 import * as t from 'io-ts';
 import { pipe } from 'fp-ts/function';
 import { fold } from 'fp-ts/Either';
-import { config } from './config';
 
 // Create a codec that handles SQLite's 0/1 as boolean
 const SQLiteBooleanCodec = new t.Type<boolean, number, unknown>(
@@ -42,7 +41,7 @@ function validateVideoMetadata(data: unknown): VideoMetadata | null {
   return pipe(result, fold(() => null, video => video));
 }
 
-class Database {
+export class Database {
   private db: sqlite3.Database;
 
   constructor(dbPath: string) {
@@ -181,6 +180,3 @@ class Database {
     });
   }
 }
-
-// Singleton instance
-export const database = new Database(config.databasePath);
