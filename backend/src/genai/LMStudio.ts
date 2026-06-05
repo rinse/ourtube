@@ -18,16 +18,15 @@ Instructions:
 - Just return the plain title text`,
 } as const;
 
-export function LMStudioGenAI(database: Database, lmStudioHost: string): GenAI {
-  console.log('LMStudioGenAI using host:', lmStudioHost);
+export function LMStudioGenAI(database: Database, lmStudioHost: string, model: string): GenAI {
+  console.log('LMStudioGenAI using host:', lmStudioHost, 'model:', model);
   const openai = new OpenAI({ baseURL: lmStudioHost, apiKey: "" });
   return {
     suggestVideoTitle: async (filename: string) => {
       const existingVideos = await database.listVideos();
       const existingTitles = existingVideos.map(v => v.title).slice(0, 100);
       const completion = await openai.chat.completions.create({
-        model: 'openai/gpt-oss-20b',
-        // model: 'openai/gpt-oss-120b',
+        model,
         messages: [
           systemPrompt,
           {

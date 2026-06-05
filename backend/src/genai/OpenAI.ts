@@ -18,14 +18,14 @@ Instructions:
 - Just return the plain title text`,
 } as const;
 
-export function OpenAIGenAI(database: Database, apiKey: string): GenAI {
+export function OpenAIGenAI(database: Database, apiKey: string, model: string): GenAI {
     const openai = new OpenAI({ apiKey: apiKey });
     return {
         suggestVideoTitle: async (filename: string) => {
             const existingVideos = await database.listVideos();
             const existingTitles = existingVideos.map(v => v.title).slice(0, 100);
             const completion = await openai.chat.completions.create({
-                model: 'gpt-4o',
+                model,
                 messages: [
                     systemPrompt,
                     {

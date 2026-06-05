@@ -12,14 +12,16 @@ export function createGenAI(
     database: Database,
     config: {
       openaiApiKey?: string,
+      openaiModel: string,
       lmStudioHost: string,
+      lmStudioModel: string,
     },
   }): GenAI {
   if (deps.config.openaiApiKey) {
     console.log('Using OpenAI for GenAI');
-    return OpenAIGenAI(deps.database, deps.config.openaiApiKey);
+    return OpenAIGenAI(deps.database, deps.config.openaiApiKey, deps.config.openaiModel);
   } else {
     console.log('Using LM Studio for GenAI');
-    return LMStudioGenAI(deps.database, deps.config.lmStudioHost);
+    return LMStudioGenAI(deps.database, deps.config.lmStudioHost, deps.config.lmStudioModel);
   }
 }

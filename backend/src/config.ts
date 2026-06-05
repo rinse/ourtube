@@ -16,7 +16,9 @@ export type AppConfig = {
   awsRegion: string,
   // AI
   openaiApiKey?: string,
+  openaiModel: string,
   lmStudioHost: string,
+  lmStudioModel: string,
 }
 
 export async function createAppConfig(): Promise<AppConfig> {
@@ -37,7 +39,9 @@ export async function createAppConfig(): Promise<AppConfig> {
   const s3BucketName = process.env.S3_BUCKET_NAME ?? 'ourtube-videostorage';
   const awsRegion = process.env.AWS_REGION ?? 'ap-northeast-1';
   const openaiApiKey = process.env.OPENAI_API_KEY;
+  const openaiModel = process.env.OPENAI_MODEL ?? 'gpt-4o';
   const lmStudioHost = process.env.LM_STUDIO_HOST ?? 'http://127.0.0.1:1234/v1';
+  const lmStudioModel = process.env.LM_STUDIO_MODEL ?? 'openai/gpt-oss-20b';
   return {
     port,
     workDir,
@@ -49,7 +53,9 @@ export async function createAppConfig(): Promise<AppConfig> {
     s3BucketName,
     awsRegion,
     openaiApiKey,
+    openaiModel,
     lmStudioHost,
+    lmStudioModel,
   };
 }
 
