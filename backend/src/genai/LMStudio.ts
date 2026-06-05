@@ -37,9 +37,13 @@ export function LMStudioGenAI(database: Database, lmStudioHost: string, model: s
           }
         ],
         temperature: 0.7,
-        max_tokens: 100
+        // 推論モデル（lfm2.5-8b-a1b 等）は reasoning_content にトークンを費やすため、
+        // 100 では推論で使い切り content が空になる。十分な余裕を持たせる。
+        max_tokens: 1000
       });
-      return completion.choices[0]?.message?.content?.trim();
+      // 切り捨て等で content が空のときは undefined を返し、呼び出し側で失敗を顕在化させる
+      // （空文字をそのまま返すとフロントにサジェストが表示されず、原因が分からなくなる）。
+      return completion.choices[0]?.message?.content?.trim() || undefined;
     }
   } satisfies GenAI;
 }

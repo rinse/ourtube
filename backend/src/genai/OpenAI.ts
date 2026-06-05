@@ -36,9 +36,12 @@ export function OpenAIGenAI(database: Database, apiKey: string, model: string): 
                     }
                 ],
                 temperature: 0.7,
-                max_tokens: 100
+                // 推論モデルは reasoning_content にトークンを費やすため、100 では
+                // 推論で使い切り content が空になる。十分な余裕を持たせる。
+                max_tokens: 1000
             });
-            return completion.choices[0]?.message?.content?.trim();
+            // 切り捨て等で content が空のときは undefined を返し、呼び出し側で失敗を顕在化させる。
+            return completion.choices[0]?.message?.content?.trim() || undefined;
         }
     } satisfies GenAI;
 }
