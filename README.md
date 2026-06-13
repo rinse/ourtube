@@ -39,13 +39,15 @@ cd infra    && npm run synth
 
 ## デプロイ
 
-GitHub Actions の **Deploy** ワークフローを `workflow_dispatch` で起動し、デプロイ対象
-ブランチを指定する。`production` Environment の必須レビュアー承認を経て `cdk deploy` が走る
-（OIDC で AWS へアクセス、静的キー不要）。事前に以下が必要:
+**`cdk deploy` 単体ではデプロイされない**（先に静的フロントのビルド・ブートストラップ・
+シークレット指定が必要）。完全な手順は [docs/deploy.md](docs/deploy.md)。
 
-- `cdk bootstrap`（初回のみ）
-- リポジトリ Secrets: `AWS_DEPLOY_ROLE_ARN`, `APP_SECRET`
-- リポジトリ Variables: `AWS_REGION`, `BEDROCK_MODEL_ID`
+- 手動: `export APP_SECRET=... && bash scripts/deploy.sh`
+- 推奨（人間承認）: GitHub Actions の **Deploy** を `workflow_dispatch` でブランチ指定起動 →
+  `production` Environment のレビュアー承認 → OIDC で `cdk deploy`。
+
+事前に一度だけ: `cdk bootstrap` / Bedrock モデルアクセス有効化 /
+（Actions 経由なら）Secrets `AWS_DEPLOY_ROLE_ARN`,`APP_SECRET` と Variables `AWS_REGION`,`BEDROCK_MODEL_ID`。
 
 ## API エンドポイント
 
