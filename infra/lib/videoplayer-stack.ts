@@ -1,0 +1,209 @@
+import * as path from 'path';
+import {
+  Stack,
+  StackProps,
+  Duration,
+  RemovalPolicy,
+  CfnOutput,
+  aws_s3 as s3,
+  aws_dynamodb as dynamodb,
+  aws_lambda as lambda,
+  aws_lambda_nodejs as nodejs,
+  aws_iam as iam,
+  aws_cloudfront as cloudfront,
+  aws_cloudfront_origins as origins,
+  aws_s3_deployment as s3deploy,
+  aws_events as events,
+  aws_events_targets as targets,
+} from 'aws-cdk-lib';
+import { Construct } from 'constructs';
+
+export interface VideoplayerStackProps extends StackProps {
+  appSecret: string;
+  bedrockModelId: string;
+}
+
+const BACKEND = path.join(__dirname, '..', '..', 'backend');
+const FRONTEND_OUT = path.join(__dirname, '..', '..', 'frontend', 'out');
+
+export class VideoplayerStack extends Stack {
+  constructor(scope: Construct, id: string, props: VideoplayerStackProps) {
+    super(scope, id, props);
+
+    // --- Storage: source uploads + HLS outputs -------------------------------
+    const storageBucket = new s3.Bucket(this, 'StorageBucket', {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      cors: [{
+        // Presigned PUT (upload) and GET (segments) happen directly from the browser.
+        allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.GET, s3.HttpMethods.HEAD],
+        allowedOrigins: ['*'],
+        allowedHeaders: ['*'],
+        exposedHeaders: ['ETag'],
+        maxAge: 3000,
+      }],
+      lifecycleRules: [{
+        // Orphan source uploads (failed/abandoned) are cleaned up automatically.
+        prefix: 'uploads/',
+        expiration: Duration.days(1),
+      }],
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+
+    // --- Metadata: single table ---------------------------------------------
+    const table = new dynamodb.Table(this, 'Table', {
+      partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+    table.addGlobalSecondaryIndex({
+      indexName: 'GSI1',
+      partitionKey: { name: 'GSI1PK', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'GSI1SK', type: dynamodb.AttributeType.STRING },
+    });
+
+    // --- MediaConvert execution role ----------------------------------------
+    const mediaConvertRole = new iam.Role(this, 'MediaConvertRole', {
+      assumedBy: new iam.ServicePrincipal('mediaconvert.amazonaws.com'),
+    });
+    storageBucket.grantReadWrite(mediaConvertRole);
+
+    const bundling: nodejs.BundlingOptions = {
+      minify: true,
+      sourceMap: false,
+      target: 'node20',
+      externalModules: [], // bundle aws-sdk v3 to avoid runtime version drift
+    };
+
+    // --- API Lambda (single) -------------------------------------------------
+    const apiFn = new nodejs.NodejsFunction(this, 'ApiFn', {
+      entry: path.join(BACKEND, 'src', 'lambda', 'api.ts'),
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      memorySize: 512,
+      timeout: Duration.seconds(30),
+      depsLockFilePath: path.join(BACKEND, 'package-lock.json'),
+      bundling,
+      environment: {
+        S3_BUCKET_NAME: storageBucket.bucketName,
+        DYNAMODB_TABLE: table.tableName,
+        CONVERTER: 'mediaconvert',
+        MEDIACONVERT_ROLE_ARN: mediaConvertRole.roleArn,
+        GENAI_PROVIDER: 'bedrock',
+        BEDROCK_MODEL_ID: props.bedrockModelId,
+        APP_SECRET: props.appSecret,
+        AUTH_COOKIE_SECURE: 'true',
+      },
+    });
+    table.grantReadWriteData(apiFn);
+    storageBucket.grantReadWrite(apiFn);
+    apiFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock:InvokeModel'],
+      resources: ['*'],
+    }));
+    apiFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['mediaconvert:CreateJob', 'mediaconvert:DescribeEndpoints'],
+      resources: ['*'],
+    }));
+    apiFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['iam:PassRole'],
+      resources: [mediaConvertRole.roleArn],
+    }));
+
+    const apiUrl = apiFn.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.NONE });
+
+    // --- Conversion Lambda (MediaConvert completion) -------------------------
+    const conversionFn = new nodejs.NodejsFunction(this, 'ConversionFn', {
+      entry: path.join(BACKEND, 'src', 'lambda', 'conversion.ts'),
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      memorySize: 256,
+      timeout: Duration.seconds(60),
+      depsLockFilePath: path.join(BACKEND, 'package-lock.json'),
+      bundling,
+      environment: {
+        S3_BUCKET_NAME: storageBucket.bucketName,
+        DYNAMODB_TABLE: table.tableName,
+        // CONVERTER is unused on this path but createDependencies builds a
+        // MediaConvert converter lazily; provide the role to satisfy config.
+        CONVERTER: 'mediaconvert',
+        MEDIACONVERT_ROLE_ARN: mediaConvertRole.roleArn,
+        GENAI_PROVIDER: 'bedrock',
+        BEDROCK_MODEL_ID: props.bedrockModelId,
+        APP_SECRET: props.appSecret,
+      },
+    });
+    table.grantReadWriteData(conversionFn);
+    storageBucket.grantReadWrite(conversionFn);
+
+    new events.Rule(this, 'MediaConvertComplete', {
+      eventPattern: {
+        source: ['aws.mediaconvert'],
+        detailType: ['MediaConvert Job State Change'],
+        detail: { status: ['COMPLETE', 'ERROR', 'CANCELED'] },
+      },
+      targets: [new targets.LambdaFunction(conversionFn)],
+    });
+
+    // --- Static SPA bucket + CloudFront -------------------------------------
+    const siteBucket = new s3.Bucket(this, 'SiteBucket', {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+
+    // Map extensionless routes to their exported .html (Next static export).
+    const rewriteToHtml = new cloudfront.Function(this, 'RewriteToHtml', {
+      code: cloudfront.FunctionCode.fromInline(`
+function handler(event) {
+  var req = event.request;
+  var uri = req.uri;
+  if (uri.endsWith('/')) {
+    req.uri = uri + 'index.html';
+  } else if (!uri.includes('.')) {
+    req.uri = uri + '.html';
+  }
+  return req;
+}`),
+    });
+
+    const distribution = new cloudfront.Distribution(this, 'Distribution', {
+      defaultRootObject: 'index.html',
+      defaultBehavior: {
+        origin: origins.S3BucketOrigin.withOriginAccessControl(siteBucket),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        functionAssociations: [{
+          function: rewriteToHtml,
+          eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+        }],
+      },
+      additionalBehaviors: {
+        'api/*': {
+          origin: new origins.FunctionUrlOrigin(apiUrl),
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+        },
+      },
+      // No distribution-wide errorResponses: they would rewrite the API's own
+      // 401/404 JSON into index.html. Known routes are reachable via the
+      // extensionless -> .html viewer function above.
+    });
+
+    new s3deploy.BucketDeployment(this, 'DeploySite', {
+      sources: [s3deploy.Source.asset(FRONTEND_OUT)],
+      destinationBucket: siteBucket,
+      distribution,
+      distributionPaths: ['/*'],
+    });
+
+    // --- Outputs -------------------------------------------------------------
+    new CfnOutput(this, 'SiteUrl', { value: `https://${distribution.distributionDomainName}` });
+    new CfnOutput(this, 'ApiFunctionUrl', { value: apiUrl.url });
+    new CfnOutput(this, 'StorageBucketName', { value: storageBucket.bucketName });
+    new CfnOutput(this, 'SiteBucketName', { value: siteBucket.bucketName });
+    new CfnOutput(this, 'TableName', { value: table.tableName });
+  }
+}
