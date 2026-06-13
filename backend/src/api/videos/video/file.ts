@@ -45,6 +45,9 @@ export async function getVideoFile(
   }
 
   if (filename === THUMBNAIL_FILENAME) {
+    if (!(await deps.storage.existsFile(videoId, filename))) {
+      return null; // 404 rather than a 500 if the thumbnail is absent
+    }
     const { stream, mime } = await deps.storage.getFile(videoId, filename);
     return { status: 'ready', kind: 'stream', mime, stream };
   }

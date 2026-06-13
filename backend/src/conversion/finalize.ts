@@ -18,6 +18,16 @@ export async function finalizeConversion(
     return;
   }
 
+  // Guard against the "ready-but-broken" trap: MediaConvert's master manifest is
+  // expected at videos/<id>/index.m3u8 (Destination ending in /index). If it is
+  // not there, the player would 404, so mark failed instead of silently ready.
+  const manifestExists = await deps.storage.existsFile(videoId, 'index.m3u8');
+  if (!manifestExists) {
+    await deps.metadata.updateStatus(videoId, 'failed');
+    console.error(`[${videoId}] COMPLETE but videos/${videoId}/index.m3u8 is missing — marking failed`);
+    return;
+  }
+
   let hasThumbnail = false;
   try {
     hasThumbnail = await deps.storage.normalizeThumbnail(videoId);

@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import path from 'path';
+import fs from 'fs';
 
 export interface VideoInfo {
   duration?: string;
@@ -120,11 +121,15 @@ export function generateThumbnail(sourcePath: string, targetDir: string): Promis
     let errorOutput = '';
     ffmpeg.stderr.on('data', (data) => { errorOutput += data.toString(); });
     ffmpeg.on('close', (code) => {
-      if (code === 0) {
+      // ffmpeg can exit 0 without producing a frame (e.g. -ss past EOF for a
+      // video shorter than the seek), so verify a non-empty file actually exists
+      // before reporting success — otherwise has_thumbnail would lie.
+      const ok = code === 0 && fs.existsSync(thumbnailPath) && fs.statSync(thumbnailPath).size > 0;
+      if (ok) {
         resolve();
       } else {
         const snippet = errorOutput.split('\n').filter((l) => l.trim()).slice(-5).join('\n');
-        reject(new Error(`Thumbnail generation failed (code ${code}):\n${snippet}`));
+        reject(new Error(`Thumbnail generation produced no frame (code ${code}):\n${snippet}`));
       }
     });
     ffmpeg.on('error', (error) => {
