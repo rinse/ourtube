@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { parseHLSDuration, formatDuration } from '../utils/video-duration';
+import { apiFetch } from '../lib/api';
 
 interface Video {
   id: string;
@@ -52,7 +53,7 @@ export default function VideoListSidebar({ currentVideoId }: VideoListSidebarPro
     let intervalId: NodeJS.Timeout | null = null;
 
     const fetchVideos = () => {
-      fetch('/api/videos')
+      apiFetch('/api/videos')
         .then(res => {
           if (!res.ok) {
             throw new Error('Failed to fetch videos');
@@ -204,7 +205,7 @@ export default function VideoListSidebar({ currentVideoId }: VideoListSidebarPro
         );
 
         return isReady ? (
-          <Link key={video.id} href={`/videos/${video.id}`} className="block">
+          <Link key={video.id} href={`/videos?id=${video.id}`} className="block">
             {videoCard}
           </Link>
         ) : (
