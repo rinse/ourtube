@@ -1,9 +1,9 @@
-import { Database } from "../../database";
+import { MetadataStore } from '../../metadata/MetadataStore';
 
-export async function updateVideoTitle(deps: { database: Database }, videoId: string, newTitle: string): Promise<boolean> {
-  const updated = await deps.database.updateVideoTitle(videoId, newTitle);
-  if (!updated) {
-    return false;
-  }
-  return true;
+export async function updateVideoTitle(
+  deps: { metadata: MetadataStore },
+  videoId: string,
+  newTitle: string,
+): Promise<boolean> {
+  return deps.metadata.updateTitle(videoId, newTitle);
 }

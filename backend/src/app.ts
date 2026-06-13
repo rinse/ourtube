@@ -1,143 +1,108 @@
-import express, { Request, Response, NextFunction } from 'express';
-import dotenv from 'dotenv';
-import fs from 'fs';
-import multer from 'multer';
-import { createVideoStorage } from './storage/createVideoStorage';
-import {
-  ApiErrorResponse,
-  UploadResponse,
-  UpdateVideoResponse,
-  DeleteVideoResponse,
-  SuggestVideoTitleResponse
-} from './api-schemas';
-import { createGenAI } from './genai/GenAI';
-import { createMulterOptions } from './multer/multer';
+import express, { Express, Request, Response, NextFunction } from 'express';
+import { Dependencies } from './dependencies';
+import { createAuth } from './auth';
+import { ApiErrorResponse, DeleteVideoResponse, UpdateVideoResponse, SuggestVideoTitleResponse } from './api-schemas';
 import { listVideos } from './api/videos/list';
 import { getVideo } from './api/videos/get';
-import { getVideoFile, VideoFile, } from './api/videos/video/file';
-import { IllegalArgumentError, unlink } from './utils';
+import { getVideoFile, VideoFile } from './api/videos/video/file';
 import { deleteVideo } from './api/videos/video/delete';
 import { updateVideoTitle } from './api/videos/update';
-import { uploadVideo } from './api/upload';
+import { createUpload, completeUpload } from './api/upload';
 import { suggetVideoTitle } from './api/suggest-video-title';
-import { createAppConfig } from './config';
-import { Database } from './database';
+import { IllegalArgumentError } from './utils';
 
-main();
-
-async function main() {
-  dotenv.config({ path: './.env' });
-
-  const config = await createAppConfig();
-  console.log('AppConfiguration: %o', config);
-
-  const database = new Database(config.databasePath);
-  const storage = createVideoStorage(database, config);
-  const genAI = createGenAI({ database, config });
-  const dependencies = {
-    config,
-    database,
-    genAI,
-    storage,
-  };
-
+/**
+ * Build the Express app from injected dependencies. No network I/O here so the
+ * same factory serves both the local server (src/server.ts) and the Lambda
+ * adapter (src/lambda/api.ts).
+ */
+export function createApp(deps: Dependencies): Express {
   const app = express();
+  const auth = createAuth(deps.config);
 
-  // Set up middlewares
-  const upload = multer(createMulterOptions(config.uploadsDir));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  // Set up routes
-  app.get('/api/videos', async (req: Request, res: Response): Promise<void> => {
+  // --- Public routes (registered before the guard so they bypass auth) ---
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+  app.post('/api/login', auth.login);
+  app.post('/api/logout', auth.logout);
+
+  // --- Everything below requires a valid session ---
+  app.use('/api', auth.guard);
+
+  app.get('/api/videos', async (_req: Request, res: Response) => {
     try {
-      const videos = await listVideos(dependencies);
-      res.json(videos);
-      return;
+      res.json(await listVideos(deps));
     } catch (error) {
-      console.error('Error on /api/videos', error);
+      console.error('Error on GET /api/videos', error);
       res.status(500).json(internalServerError());
-      return;
     }
   });
 
-  app.get('/api/videos/:videoId', async (req: Request, res: Response): Promise<void> => {
+  app.get('/api/videos/:videoId', async (req: Request, res: Response) => {
     const { videoId } = req.params;
     try {
-      const video = await getVideo(dependencies, videoId);
+      const video = await getVideo(deps, videoId);
       if (video == null) {
-        res.status(404).json({
-          error: 'Video not found',
-          message: `Video with ID ${videoId} does not exist`
-        } satisfies ApiErrorResponse);
+        res.status(404).json(videoNotFoundError(videoId));
         return;
       }
-      console.log(`Fetched video ${video}`);
-      res.status(200).json(video);
-      return;
+      res.json(video);
     } catch (error) {
-      console.error(`Error on /api/videos/${videoId}`, error);
+      console.error(`Error on GET /api/videos/${videoId}`, error);
       res.status(500).json(internalServerError());
-      return;
     }
   });
 
-  app.delete('/api/videos/:videoId', async (req: Request, res: Response): Promise<void> => {
+  app.delete('/api/videos/:videoId', async (req: Request, res: Response) => {
     const { videoId } = req.params;
-    let isDeleted: boolean;
     try {
-      isDeleted = await deleteVideo(dependencies, videoId);
+      const isDeleted = await deleteVideo(deps, videoId);
+      if (!isDeleted) {
+        res.status(404).json(videoNotFoundError(videoId));
+        return;
+      }
+      res.json({ message: 'ok' } satisfies DeleteVideoResponse);
     } catch (error) {
+      console.error(`Error on DELETE /api/videos/${videoId}`, error);
       res.status(500).json(internalServerError());
-      return;
     }
-    if (!isDeleted) {
-      res.status(404).json(videoNotFoundError(videoId));
-      return;
-    }
-    res.json({ message: 'ok' } satisfies DeleteVideoResponse);
-    return;
   });
 
-  app.put('/api/videos/:videoId', async (req: Request, res: Response): Promise<void> => {
+  app.put('/api/videos/:videoId', async (req: Request, res: Response) => {
     const { videoId } = req.params;
     const { title } = req.body;
     if (typeof title !== 'string') {
-      res.status(400).json({
-        error: 'Invalid input',
-        message: 'Title is required and must be a string'
-      } satisfies ApiErrorResponse);
+      res.status(400).json({ error: 'Invalid input', message: 'Title is required and must be a string' } satisfies ApiErrorResponse);
       return;
     }
     try {
-      const isUpdated = await updateVideoTitle(dependencies, videoId, title);
+      const isUpdated = await updateVideoTitle(deps, videoId, title);
       if (!isUpdated) {
         res.status(404).json(videoNotFoundError(videoId));
         return;
       }
       res.json({ message: 'ok' } satisfies UpdateVideoResponse);
-      return;
     } catch (error) {
-      console.error('Update error:', error);
+      console.error(`Error on PUT /api/videos/${videoId}`, error);
       res.status(500).json(internalServerError());
-      return;
     }
   });
 
-  app.get('/api/videos/:videoId/:filename', async (req: Request, res: Response): Promise<void> => {
+  app.get('/api/videos/:videoId/:filename', async (req: Request, res: Response) => {
     const { videoId, filename } = req.params;
     let file: VideoFile | null;
     try {
-      file = await getVideoFile(dependencies, videoId, filename);
+      file = await getVideoFile(deps, videoId, filename);
     } catch (error: unknown) {
       if (error instanceof IllegalArgumentError) {
-        res.status(400).json({
-          error: 'Invalid file type',
-          message: 'Only .ts, .vtt, .m3u8 files, index.m3u8 and thumbnail.png are allowed'
-        } satisfies ApiErrorResponse);
+        res.status(400).json({ error: 'Invalid file type', message: error.message } satisfies ApiErrorResponse);
         return;
       }
-      console.error(`Error on /api/videos/${videoId}/${filename}`, error);
+      console.error(`Error on GET /api/videos/${videoId}/${filename}`, error);
       res.status(500).json(internalServerError());
       return;
     }
@@ -146,137 +111,105 @@ async function main() {
       return;
     }
     switch (file.status) {
-      case 'ready': {
-        res.setHeader('Content-Type', file.mime);
-        res.setHeader('Cache-Control', 'public, max-age=3600');
-        file.stream.pipe(res);
-        return;
-      }
-      case 'converting': {
-        res.status(503).json(videoStillConvertingError(videoId));
-        return;
-      }
-      case 'failed': {
-        res.status(400).json(videoConversionFailedError(videoId));
-        return;
-      }
-    }
-  });
-
-  app.post('/api/upload', upload.single('video'), async (req: Request, res: Response): Promise<void> => {
-    if (!req.file) {
-      res.status(400).json({
-        error: 'No file uploaded',
-        message: 'Please provide a video file'
-      } satisfies ApiErrorResponse);
-      return;
-    }
-    const title = req.body.title || req.file.originalname.replace(/\.[^/.]+$/, '');
-    let response: UploadResponse | null;
-    try {
-      response = await uploadVideo(dependencies, title, req.file);
-    } catch (error) {
-      console.error('Upload processing failed:', error);
-      if (req.file != null && fs.existsSync(req.file.path)) {
-        try {
-          unlink(req.file.path);
-          console.log('  Cleaned up uploaded file after error');
-        } catch (cleanupError) {
-          console.error('  Failed to clean up uploaded file:', cleanupError);
+      case 'ready':
+        switch (file.kind) {
+          case 'manifest':
+            res.setHeader('Content-Type', file.mime);
+            res.setHeader('Cache-Control', 'no-store');
+            res.send(file.body);
+            return;
+          case 'redirect':
+            res.redirect(302, file.url);
+            return;
+          case 'stream':
+            res.setHeader('Content-Type', file.mime);
+            res.setHeader('Cache-Control', 'public, max-age=3600');
+            file.stream.pipe(res);
+            return;
         }
-      }
-      res.status(500).json(internalServerError());
-      return;
+        return;
+      case 'converting':
+        res.status(503).json({ error: 'Video not ready', message: `Video ${videoId} is still converting` } satisfies ApiErrorResponse);
+        return;
+      case 'failed':
+        res.status(400).json({ error: 'Video not available', message: `Video conversion for ${videoId} has failed` } satisfies ApiErrorResponse);
+        return;
     }
-    if (response == null) {
-      res.status(409).json({
-        error: 'Video already exists',
-        message: `This video has already been uploaded with the title: "${title}"`
-      } satisfies ApiErrorResponse);
-      return;
-    }
-    res.status(201)
-      .location(`/api/videos/${response.videoId}`)
-      .json(response);
-    return;
   });
 
-  app.post('/api/suggest-video-title', async (req: Request, res: Response): Promise<void> => {
-    const { fileName } = req.body;
-    if (!fileName || typeof fileName !== 'string') {
-      res.status(400).json({
-        error: 'Invalid input',
-        message: 'fileName is required in request body'
-      } satisfies ApiErrorResponse);
+  app.post('/api/uploads', async (req: Request, res: Response) => {
+    const { sha256, fileName, title, contentType } = req.body ?? {};
+    if (typeof sha256 !== 'string' || typeof fileName !== 'string') {
+      res.status(400).json({ error: 'Invalid input', message: 'sha256 and fileName are required' } satisfies ApiErrorResponse);
       return;
     }
-    let title: string;
     try {
-      title = await suggetVideoTitle(dependencies, fileName);
+      const response = await createUpload(deps, { sha256, fileName, title, contentType });
+      if (response == null) {
+        res.status(409).json({ error: 'Video already exists', message: 'This video has already been uploaded' } satisfies ApiErrorResponse);
+        return;
+      }
+      res.status(201).location(`/api/videos/${response.videoId}`).json(response);
     } catch (error) {
       if (error instanceof IllegalArgumentError) {
-        res.status(400).json({
-          error: 'Invalid file type',
-          message: 'Only .ts, .vtt, .m3u8 files, index.m3u8 and thumbnail.png are allowed'
-        } satisfies ApiErrorResponse);
+        res.status(400).json({ error: 'Invalid input', message: error.message } satisfies ApiErrorResponse);
         return;
       }
-      console.error(`Error on /api/suggest-video-title`, error);
+      console.error('Error on POST /api/uploads', error);
       res.status(500).json(internalServerError());
+    }
+  });
+
+  app.post('/api/uploads/:videoId/complete', async (req: Request, res: Response) => {
+    const { videoId } = req.params;
+    try {
+      const started = await completeUpload(deps, videoId);
+      if (!started) {
+        res.status(404).json(videoNotFoundError(videoId));
+        return;
+      }
+      res.status(202).json({ message: 'ok' });
+    } catch (error) {
+      console.error(`Error on POST /api/uploads/${videoId}/complete`, error);
+      res.status(500).json(internalServerError());
+    }
+  });
+
+  app.post('/api/suggest-video-title', async (req: Request, res: Response) => {
+    const { fileName } = req.body ?? {};
+    if (!fileName || typeof fileName !== 'string') {
+      res.status(400).json({ error: 'Invalid input', message: 'fileName is required in request body' } satisfies ApiErrorResponse);
       return;
     }
-    res.json({
-      suggestedTitle: title,
-    } satisfies SuggestVideoTitleResponse);
-    return;
+    try {
+      const title = await suggetVideoTitle(deps, fileName);
+      res.json({ suggestedTitle: title } satisfies SuggestVideoTitleResponse);
+    } catch (error) {
+      if (error instanceof IllegalArgumentError) {
+        res.status(400).json({ error: 'Invalid input', message: error.message } satisfies ApiErrorResponse);
+        return;
+      }
+      console.error('Error on POST /api/suggest-video-title', error);
+      res.status(500).json(internalServerError());
+    }
   });
 
   app.use((req: Request, res: Response) => {
-    res.status(404).json({
-      error: 'Not Found',
-      message: `Route ${req.method} ${req.path} not found`
-    } satisfies ApiErrorResponse);
+    res.status(404).json({ error: 'Not Found', message: `Route ${req.method} ${req.path} not found` } satisfies ApiErrorResponse);
   });
 
-  app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-    console.error('Error:', err.stack);
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
-    } satisfies ApiErrorResponse);
+  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+    console.error('Unhandled error:', err.stack);
+    res.status(500).json({ error: 'Internal Server Error', message: 'Something went wrong' } satisfies ApiErrorResponse);
   });
 
-  // Start the server
-  const _server = app.listen(config.port, (_error) => {
-    console.log(`Server is running on port ${config.port}`);
-    console.log(`API endpoint: http://localhost:${config.port}/api`);
-  });
-}
-
-function videoStillConvertingError(videoId: string): ApiErrorResponse {
-  return {
-    error: 'Video not ready',
-    message: `Video ${videoId} is still converting`
-  };
-}
-
-function videoConversionFailedError(videoId: string): ApiErrorResponse {
-  return {
-    error: 'Video not available',
-    message: `Video conversion for ${videoId} has failed`
-  };
+  return app;
 }
 
 function internalServerError(): ApiErrorResponse {
-  return {
-    error: 'Internal Server Error',
-    message: 'An unexpected error occurred on the server.'
-  };
-};
+  return { error: 'Internal Server Error', message: 'An unexpected error occurred on the server.' };
+}
 
 function videoNotFoundError(videoId: string): ApiErrorResponse {
-  return {
-    error: 'Video not found',
-    message: `Video with ID ${videoId} does not exist`
-  };
-};
+  return { error: 'Video not found', message: `Video with ID ${videoId} does not exist` };
+}
