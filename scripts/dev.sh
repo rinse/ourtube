@@ -7,8 +7,15 @@ cd "$(dirname "$0")/.."
 # shellcheck source=scripts/local-env.sh
 source scripts/local-env.sh
 
+# A previous run that was killed abruptly can leave an orphaned next-server (the
+# `next dev` child) holding :3000. Free both ports before we start.
+echo "==> Freeing ports 3000/4000 from any previous dev run…"
+for p in 3000 4000; do
+  lsof -t -iTCP:"$p" -sTCP:LISTEN 2>/dev/null | xargs -r kill 2>/dev/null || true
+done
+
 echo "==> Starting local infra (MinIO + DynamoDB Local)…"
-docker compose up -d
+docker compose up -d --remove-orphans
 
 echo "==> Waiting for bucket/table initialization…"
 sleep 6
