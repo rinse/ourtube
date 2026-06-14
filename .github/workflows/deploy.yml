@@ -15,11 +15,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: production # requires reviewer approval (configure in repo settings)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         # No `ref:` — checkout defaults to the dispatched branch (the one chosen
         # in "Use workflow from"), so the launching branch is what gets deployed.
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
 
@@ -38,7 +38,7 @@ jobs:
         working-directory: infra
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
