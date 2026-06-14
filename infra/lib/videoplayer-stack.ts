@@ -228,6 +228,17 @@ function handler(event) {
       distributionPaths: ['/*'],
     });
 
+    // OAC on a Lambda Function URL needs BOTH actions for the CloudFront
+    // principal: withOriginAccessControl auto-adds `lambda:InvokeFunctionUrl`,
+    // but the signed invoke is still rejected (403 AccessDeniedException at the
+    // Function URL) without `lambda:InvokeFunction` as well. AWS documents both;
+    // the construct only adds the first, so we add the second here.
+    apiFn.addPermission('CloudFrontInvokeFunction', {
+      principal: new iam.ServicePrincipal('cloudfront.amazonaws.com'),
+      action: 'lambda:InvokeFunction',
+      sourceArn: `arn:${this.partition}:cloudfront::${this.account}:distribution/${distribution.distributionId}`,
+    });
+
     // --- Custom domain alias records (CloudFront is dual-stack -> A + AAAA) ---
     if (props.domainName && props.hostedZoneId && props.hostedZoneName) {
       const zone = route53.HostedZone.fromHostedZoneAttributes(this, 'Zone', {
