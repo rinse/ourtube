@@ -3,6 +3,7 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '../components/Header';
+import { apiFetch } from '../lib/api';
 
 function LoginForm() {
   const router = useRouter();
@@ -16,10 +17,11 @@ function LoginForm() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch('/api/login', {
+      // Via apiFetch so the OAC body-hash header is attached (see lib/api.ts).
+      // apiFetch won't redirect on 401 while already on /login.
+      const res = await apiFetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
         body: JSON.stringify({ secret }),
       });
       if (!res.ok) {

@@ -33,10 +33,8 @@ export interface VideoplayerStackProps extends StackProps {
   hostedZoneId?: string;
   hostedZoneName?: string;
   // WAFv2 web ACL ARN (us-east-1 / CLOUDFRONT scope) to attach to the
-  // distribution. Needed because CloudFront's one-click security protection
-  // creates a web ACL out-of-band; while that pricing plan is active the
-  // distribution must keep a web ACL, so CDK has to declare it or every update
-  // fails with "You can't remove or replace the web ACL". Omit if no WAF.
+  // distribution. Now CDK-managed in WafStack and passed in by cross-region
+  // reference. Omit to run without a web ACL.
   webAclId?: string;
 }
 
@@ -128,7 +126,9 @@ export class VideoplayerStack extends Stack {
       resources: [mediaConvertRole.roleArn],
     }));
 
-    const apiUrl = apiFn.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.NONE });
+    // AWS_IAM so the Function URL can't be invoked directly — only CloudFront,
+    // via origin access control (OAC), is allowed to call it (SigV4-signed).
+    const apiUrl = apiFn.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.AWS_IAM });
 
     // --- Conversion Lambda (MediaConvert completion) -------------------------
     const conversionFn = new nodejs.NodejsFunction(this, 'ConversionFn', {
@@ -206,7 +206,10 @@ function handler(event) {
       },
       additionalBehaviors: {
         'api/*': {
-          origin: new origins.FunctionUrlOrigin(apiUrl),
+          // OAC origin: CloudFront signs (SigV4) every request to the Function
+          // URL and CDK auto-emits the Lambda invoke permission scoped to this
+          // distribution, so direct hits to the Function URL get 403.
+          origin: origins.FunctionUrlOrigin.withOriginAccessControl(apiUrl),
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
           cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
