@@ -49,6 +49,8 @@ cd infra    && npm run synth
 事前に一度だけ: `cdk bootstrap` / Bedrock モデルアクセス有効化 /
 （Actions 経由なら）Secrets `AWS_DEPLOY_ROLE_ARN`,`APP_SECRET` と Variables `AWS_REGION`,`BEDROCK_MODEL_ID`。
 
+カスタムドメイン（`ourtube.esnir.net`）の適用手順は [docs/custom-domain.md](docs/custom-domain.md)。
+
 ## API エンドポイント
 
 | メソッド | パス | 説明 |

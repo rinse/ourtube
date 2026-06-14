@@ -15,12 +15,23 @@ import {
   aws_s3_deployment as s3deploy,
   aws_events as events,
   aws_events_targets as targets,
+  aws_certificatemanager as acm,
+  aws_route53 as route53,
+  aws_route53_targets as route53Targets,
 } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
 export interface VideoplayerStackProps extends StackProps {
   appSecret: string;
   bedrockModelId: string;
+  // Custom domain (all optional — omit to use the default *.cloudfront.net name).
+  // The ACM certificate MUST live in us-east-1 (CloudFront requirement) and is
+  // imported by ARN; the hosted zone is imported by id/name. Both are shared,
+  // out-of-band resources — this stack never creates or deletes them.
+  domainName?: string;
+  certificateArn?: string;
+  hostedZoneId?: string;
+  hostedZoneName?: string;
 }
 
 const BACKEND = path.join(__dirname, '..', '..', 'backend');
@@ -168,7 +179,15 @@ function handler(event) {
 }`),
     });
 
+    // Import the shared wildcard cert (us-east-1) by ARN, if a domain is configured.
+    const certificate = props.certificateArn
+      ? acm.Certificate.fromCertificateArn(this, 'Certificate', props.certificateArn)
+      : undefined;
+
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
+      ...(props.domainName && certificate
+        ? { domainNames: [props.domainName], certificate }
+        : {}),
       defaultRootObject: 'index.html',
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(siteBucket),
@@ -198,6 +217,20 @@ function handler(event) {
       distribution,
       distributionPaths: ['/*'],
     });
+
+    // --- Custom domain alias records (CloudFront is dual-stack -> A + AAAA) ---
+    if (props.domainName && props.hostedZoneId && props.hostedZoneName) {
+      const zone = route53.HostedZone.fromHostedZoneAttributes(this, 'Zone', {
+        hostedZoneId: props.hostedZoneId,
+        zoneName: props.hostedZoneName,
+      });
+      const aliasTarget = route53.RecordTarget.fromAlias(
+        new route53Targets.CloudFrontTarget(distribution),
+      );
+      new route53.ARecord(this, 'AliasA', { zone, recordName: props.domainName, target: aliasTarget });
+      new route53.AaaaRecord(this, 'AliasAAAA', { zone, recordName: props.domainName, target: aliasTarget });
+      new CfnOutput(this, 'CustomDomainUrl', { value: `https://${props.domainName}` });
+    }
 
     // --- Outputs -------------------------------------------------------------
     new CfnOutput(this, 'SiteUrl', { value: `https://${distribution.distributionDomainName}` });
