@@ -89,7 +89,7 @@ export class VideoplayerStack extends Stack {
     const bundling: nodejs.BundlingOptions = {
       minify: true,
       sourceMap: false,
-      target: 'node20',
+      target: 'node22',
       externalModules: [], // bundle aws-sdk v3 to avoid runtime version drift
     };
 
@@ -97,7 +97,7 @@ export class VideoplayerStack extends Stack {
     const apiFn = new nodejs.NodejsFunction(this, 'ApiFn', {
       entry: path.join(BACKEND, 'src', 'lambda', 'api.ts'),
       handler: 'handler',
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       memorySize: 512,
       timeout: Duration.seconds(30),
       depsLockFilePath: path.join(BACKEND, 'package-lock.json'),
@@ -134,7 +134,7 @@ export class VideoplayerStack extends Stack {
     const conversionFn = new nodejs.NodejsFunction(this, 'ConversionFn', {
       entry: path.join(BACKEND, 'src', 'lambda', 'conversion.ts'),
       handler: 'handler',
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       memorySize: 256,
       timeout: Duration.seconds(60),
       depsLockFilePath: path.join(BACKEND, 'package-lock.json'),
