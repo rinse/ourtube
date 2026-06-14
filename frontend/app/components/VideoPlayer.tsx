@@ -24,7 +24,7 @@ export default function VideoPlayer({ src, poster, autoPlay = true }: VideoPlaye
         const hls = new Hls({
           debug: false,
           enableWorker: true,
-          lowLatencyMode: true,
+          lowLatencyMode: false,
         });
 
         hlsRef.current = hls;

@@ -42,10 +42,7 @@ export function createAuth(config: AppConfig): Auth {
     },
 
     login(req, res) {
-      const provided =
-        (typeof req.query.key === 'string' ? req.query.key : undefined) ??
-        (typeof req.body?.secret === 'string' ? req.body.secret : undefined) ??
-        '';
+      const provided = typeof req.body?.secret === 'string' ? req.body.secret : '';
       if (!secretMatches(provided, secret)) {
         res.status(401).json({ error: 'Unauthorized', message: 'Invalid secret' });
         return;

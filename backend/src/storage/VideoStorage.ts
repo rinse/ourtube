@@ -7,7 +7,7 @@ import { Readable } from 'stream';
  *
  * Key layout:
  *   uploads/<videoId>          source upload (content-addressed by SHA256)
- *   videos/<videoId>/<file>    HLS manifest, segments, thumbnail.png
+ *   videos/<videoId>/<file>    HLS manifest, segments, thumbnail.jpg
  */
 export interface VideoStorage {
   /** Stream a single HLS output file (videos/<id>/<filename>). */
