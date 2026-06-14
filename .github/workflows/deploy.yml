@@ -9,6 +9,12 @@ on:
         description: 'Branch or ref to deploy'
         required: true
         default: 'main'
+  # TEMPORARY: workflow_dispatch only runs from the default branch, so until this
+  # is merged to main we trigger on pushes to the feature branch to validate the
+  # pipeline. The `production` environment approval still gates the deploy.
+  # REMOVE this push: block after merging to main.
+  push:
+    branches: [refactor/aws-native]
 
 permissions:
   id-token: write # OIDC for AWS
@@ -21,7 +27,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          # workflow_dispatch -> chosen ref; push -> the pushed branch.
+          ref: ${{ inputs.ref || github.ref_name }}
 
       - uses: actions/setup-node@v4
         with:
