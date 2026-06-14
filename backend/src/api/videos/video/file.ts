@@ -7,10 +7,17 @@ import { THUMBNAIL_FILENAME, getMimeType } from '../../../media/ffmpeg';
 
 /**
  * Playback result. Single mechanism across local (MinIO) and prod (S3):
- *  - manifests (.m3u8) are fetched and rewritten so segment lines point at
- *    presigned S3/MinIO GET URLs (child manifests stay relative -> served here);
- *  - segments (.ts/.vtt) requested directly are redirected to a presigned URL;
+ *  - manifests (.m3u8) are served verbatim: every line (segments and child
+ *    manifests alike) stays relative, so the browser re-requests each one
+ *    through this same endpoint;
+ *  - segments (.ts/.vtt) requested directly are redirected to a freshly
+ *    presigned URL (signed at request time, so there is no playback-wide
+ *    expiry: a >1h video, or a long pause/resume, never hits a stale 403);
  *  - the thumbnail is streamed through (small).
+ *
+ * Tradeoff: each segment costs one extra 302 round-trip to the API. For a
+ * single-user service that is negligible, and it removes the expiry ceiling
+ * that presigning segments inside the manifest used to impose.
  */
 export type VideoFile =
   | { status: 'ready'; kind: 'manifest'; body: string; mime: string }
@@ -39,8 +46,11 @@ export async function getVideoFile(
   }
 
   if (filename.endsWith('.m3u8')) {
-    const text = await deps.storage.getText(videoId, filename);
-    const body = await rewriteManifest(text, (segment) => deps.storage.presignGetFile(videoId, segment));
+    // Serve the manifest verbatim: segment lines stay relative so the browser
+    // re-requests each through GET /api/videos/:id/:segment, which presigns at
+    // request time. This removes the playback-wide expiry that came from
+    // baking presigned (TTL-bound) URLs into the manifest.
+    const body = await deps.storage.getText(videoId, filename);
     return { status: 'ready', kind: 'manifest', body, mime: getMimeType(filename) };
   }
 
@@ -55,24 +65,4 @@ export async function getVideoFile(
   // .ts / .vtt requested directly -> hand off to a presigned URL.
   const url = await deps.storage.presignGetFile(videoId, filename);
   return { status: 'ready', kind: 'redirect', url };
-}
-
-/**
- * Rewrite an HLS manifest: segment URIs become presigned URLs, child manifests
- * stay relative (so they round-trip through this same endpoint), and comments
- * pass through untouched.
- */
-async function rewriteManifest(
-  text: string,
-  presign: (filename: string) => Promise<string>,
-): Promise<string> {
-  const lines = text.split('\n');
-  const out = await Promise.all(lines.map(async (line) => {
-    const trimmed = line.trim();
-    if (trimmed === '' || trimmed.startsWith('#') || trimmed.endsWith('.m3u8')) {
-      return line;
-    }
-    return presign(trimmed);
-  }));
-  return out.join('\n');
 }
