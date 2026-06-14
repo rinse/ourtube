@@ -1,14 +1,23 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
 import { VideoplayerStack } from '../lib/videoplayer-stack';
+import { WafStack } from '../lib/waf-stack';
 
 const app = new cdk.App();
 
+const account = process.env.CDK_DEFAULT_ACCOUNT;
+const region = process.env.CDK_DEFAULT_REGION ?? 'ap-northeast-1';
+
+// CloudFront-scoped WAF must live in us-east-1, so it's a separate stack. The
+// app stack imports its ARN via a cross-region reference (enabled on both).
+const wafStack = new WafStack(app, 'OurtubeWafStack', {
+  env: { account, region: 'us-east-1' },
+  crossRegionReferences: true,
+});
+
 new VideoplayerStack(app, 'VideoplayerStack', {
-  env: {
-    account: process.env.CDK_DEFAULT_ACCOUNT,
-    region: process.env.CDK_DEFAULT_REGION ?? 'ap-northeast-1',
-  },
+  env: { account, region },
+  crossRegionReferences: true,
   // Shared secret for the access gate. Provided by the deploy workflow from a
   // GitHub Secret; never commit a real value.
   appSecret: process.env.APP_SECRET ?? 'CHANGE-ME-IN-DEPLOY',
@@ -19,7 +28,7 @@ new VideoplayerStack(app, 'VideoplayerStack', {
   certificateArn: process.env.CERTIFICATE_ARN,
   hostedZoneId: process.env.HOSTED_ZONE_ID,
   hostedZoneName: process.env.HOSTED_ZONE_NAME,
-  // WAFv2 web ACL ARN to keep attached (CloudFront one-click protection creates
-  // one out-of-band; see docs/custom-domain.md).
-  webAclId: process.env.CLOUDFRONT_WEB_ACL_ARN,
+  // WAFv2 web ACL is now CDK-managed (see WafStack), attached to the
+  // distribution via a cross-region reference.
+  webAclId: wafStack.webAclArn,
 });

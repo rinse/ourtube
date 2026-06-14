@@ -44,7 +44,9 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: CDK deploy
-        run: npx cdk deploy --require-approval never
+        # --all: the app now spans two stacks — OurtubeWafStack (us-east-1,
+        # CloudFront-scoped WAF) and VideoplayerStack (app). See docs/security.md.
+        run: npx cdk deploy --all --require-approval never
         working-directory: infra
         env:
           CDK_DEFAULT_REGION: ${{ vars.AWS_REGION }}
@@ -56,6 +58,3 @@ jobs:
           CERTIFICATE_ARN: ${{ vars.CERTIFICATE_ARN }}
           HOSTED_ZONE_ID: ${{ vars.HOSTED_ZONE_ID }}
           HOSTED_ZONE_NAME: ${{ vars.HOSTED_ZONE_NAME }}
-          # WAFv2 web ACL ARN created by CloudFront's one-click protection; must
-          # stay attached while the pricing plan is active (else updates 400).
-          CLOUDFRONT_WEB_ACL_ARN: ${{ vars.CLOUDFRONT_WEB_ACL_ARN }}
