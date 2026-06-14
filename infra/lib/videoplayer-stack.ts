@@ -32,6 +32,12 @@ export interface VideoplayerStackProps extends StackProps {
   certificateArn?: string;
   hostedZoneId?: string;
   hostedZoneName?: string;
+  // WAFv2 web ACL ARN (us-east-1 / CLOUDFRONT scope) to attach to the
+  // distribution. Needed because CloudFront's one-click security protection
+  // creates a web ACL out-of-band; while that pricing plan is active the
+  // distribution must keep a web ACL, so CDK has to declare it or every update
+  // fails with "You can't remove or replace the web ACL". Omit if no WAF.
+  webAclId?: string;
 }
 
 const BACKEND = path.join(__dirname, '..', '..', 'backend');
@@ -188,6 +194,7 @@ function handler(event) {
       ...(props.domainName && certificate
         ? { domainNames: [props.domainName], certificate }
         : {}),
+      ...(props.webAclId ? { webAclId: props.webAclId } : {}),
       defaultRootObject: 'index.html',
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(siteBucket),

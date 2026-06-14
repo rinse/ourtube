@@ -61,3 +61,6 @@ jobs:
           CERTIFICATE_ARN: ${{ vars.CERTIFICATE_ARN }}
           HOSTED_ZONE_ID: ${{ vars.HOSTED_ZONE_ID }}
           HOSTED_ZONE_NAME: ${{ vars.HOSTED_ZONE_NAME }}
+          # WAFv2 web ACL ARN created by CloudFront's one-click protection; must
+          # stay attached while the pricing plan is active (else updates 400).
+          CLOUDFRONT_WEB_ACL_ARN: ${{ vars.CLOUDFRONT_WEB_ACL_ARN }}

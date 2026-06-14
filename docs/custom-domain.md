@@ -113,6 +113,30 @@ dig +short ourtube.esnir.net           # CloudFront ドメインに解決され�
 curl -I https://ourtube.esnir.net      # 200/3xx + CloudFront ヘッダ
 ```
 
+## CloudFront の WAF（web ACL）について
+
+CloudFront コンソールの「セキュリティ保護を有効化」（ワンクリック WAF / 料金プラン）を
+有効にすると、`CreatedByCloudFront-...` という web ACL が**スタック外で**作られ、
+ディストリビューションに紐付く。このプラン契約中は「ディストリビューションは web ACL
+必須」となるため、CDK が web ACL 無しの設定で更新すると次のエラーで失敗する:
+
+```
+You can't remove or replace the web ACL for your distribution.
+Distributions with a pricing plan subscription must have a web ACL resource.
+```
+
+対処: その web ACL の ARN を **GitHub Variable `CLOUDFRONT_WEB_ACL_ARN`** に設定すると、
+CDK が `webAclId` として保持し、以後の更新が通る（保護は維持・追加料金なし）。ARN は:
+
+```bash
+env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY AWS_PROFILE=<prof> \
+  aws cloudfront get-distribution-config --id <DIST_ID> \
+  --query "DistributionConfig.WebACLId" --output text
+```
+
+WAF が不要なら CloudFront コンソールで保護を無効化（プラン解約）し、この変数は未設定の
+ままにする。
+
 ## 補足
 
 - これらの環境変数を**設定しなければ従来どおり** `*.cloudfront.net` の既定ドメインで
