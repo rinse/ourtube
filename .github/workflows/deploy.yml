@@ -1,14 +1,10 @@
 name: Deploy
 
-# Manual, human-approved deploy. A human picks the branch/ref and the
-# `production` GitHub Environment's required-reviewer rule gates the run.
+# Manual, human-approved deploy. Dispatch from the branch you want to deploy
+# (GitHub Actions "Use workflow from"); that branch is what gets checked out and
+# deployed. The `production` Environment's required-reviewer rule gates the run.
 on:
   workflow_dispatch:
-    inputs:
-      ref:
-        description: 'Branch or ref to deploy'
-        required: true
-        default: 'main'
 
 permissions:
   id-token: write # OIDC for AWS
@@ -20,9 +16,8 @@ jobs:
     environment: production # requires reviewer approval (configure in repo settings)
     steps:
       - uses: actions/checkout@v4
-        with:
-          # The branch/ref chosen at workflow_dispatch time.
-          ref: ${{ inputs.ref }}
+        # No `ref:` — checkout defaults to the dispatched branch (the one chosen
+        # in "Use workflow from"), so the launching branch is what gets deployed.
 
       - uses: actions/setup-node@v4
         with:
