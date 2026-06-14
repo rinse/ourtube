@@ -13,4 +13,10 @@ new VideoplayerStack(app, 'VideoplayerStack', {
   // GitHub Secret; never commit a real value.
   appSecret: process.env.APP_SECRET ?? 'CHANGE-ME-IN-DEPLOY',
   bedrockModelId: process.env.BEDROCK_MODEL_ID ?? 'apac.anthropic.claude-sonnet-4-20250514-v1:0',
+  // Custom domain (optional). CERTIFICATE_ARN must be an ACM cert in us-east-1.
+  // See docs/custom-domain.md for the one-time shared-resource setup.
+  domainName: process.env.DOMAIN_NAME,
+  certificateArn: process.env.CERTIFICATE_ARN,
+  hostedZoneId: process.env.HOSTED_ZONE_ID,
+  hostedZoneName: process.env.HOSTED_ZONE_NAME,
 });
