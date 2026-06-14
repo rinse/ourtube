@@ -19,4 +19,7 @@ new VideoplayerStack(app, 'VideoplayerStack', {
   certificateArn: process.env.CERTIFICATE_ARN,
   hostedZoneId: process.env.HOSTED_ZONE_ID,
   hostedZoneName: process.env.HOSTED_ZONE_NAME,
+  // WAFv2 web ACL ARN to keep attached (CloudFront one-click protection creates
+  // one out-of-band; see docs/custom-domain.md).
+  webAclId: process.env.CLOUDFRONT_WEB_ACL_ARN,
 });
