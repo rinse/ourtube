@@ -21,4 +21,6 @@ export DYNAMODB_TABLE="${DYNAMODB_TABLE:-videoplayer}"
 export CONVERTER="${CONVERTER:-local}"
 export AUTH_BYPASS="${AUTH_BYPASS:-1}"
 export GENAI_PROVIDER="${GENAI_PROVIDER:-lmstudio}"
-export PORT="${PORT:-4000}"
+# NOTE: do NOT export PORT here — `next dev` also honors PORT and would collide
+# with the backend on 4000. The backend defaults to 4000 (config.ts) and dev.sh
+# pins each process's port explicitly.
