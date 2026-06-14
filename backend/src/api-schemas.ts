@@ -56,14 +56,21 @@ export const VideoInfoResponseCodec = t.intersection([
 ]);
 export type VideoInfoResponse = t.TypeOf<typeof VideoInfoResponseCodec>;
 
-// Upload response
-export const UploadResponseCodec = t.type({
-  message: t.string,
+// Create-upload response (presigned PUT handshake)
+export const CreateUploadResponseCodec = t.type({
   videoId: t.string,
   title: t.string,
-  status: t.literal('converting')
+  status: t.literal('converting'),
+  uploadUrl: t.string,
+  key: t.string,
 });
-export type UploadResponse = t.TypeOf<typeof UploadResponseCodec>;
+export type CreateUploadResponse = t.TypeOf<typeof CreateUploadResponseCodec>;
+
+// Generic ok response
+export const OkResponseCodec = t.type({
+  message: t.string,
+});
+export type OkResponse = t.TypeOf<typeof OkResponseCodec>;
 
 // Update video response
 export const UpdateVideoResponseCodec = t.type({

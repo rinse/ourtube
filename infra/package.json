@@ -1,0 +1,23 @@
+{
+  "name": "infra",
+  "version": "1.0.0",
+  "private": true,
+  "bin": { "infra": "bin/videoplayer.js" },
+  "scripts": {
+    "build": "tsc",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy --require-approval never",
+    "diff": "cdk diff"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.10",
+    "aws-cdk": "^2.1009.0",
+    "esbuild": "^0.24.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.189.0",
+    "constructs": "^10.4.2"
+  }
+}

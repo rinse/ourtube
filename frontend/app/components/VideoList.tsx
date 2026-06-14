@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { parseHLSDuration, formatDuration } from '../utils/video-duration';
+import { apiFetch } from '../lib/api';
 import DeleteVideoDialog from './DeleteVideoDialog';
 
 interface Video {
@@ -50,7 +51,7 @@ export default function VideoList() {
     if (!deleteDialog.video) return;
 
     try {
-      const response = await fetch(`/api/videos/${deleteDialog.video.id}`, {
+      const response = await apiFetch(`/api/videos/${deleteDialog.video.id}`, {
         method: 'DELETE',
       });
 
@@ -71,7 +72,7 @@ export default function VideoList() {
     let intervalId: NodeJS.Timeout | null = null;
 
     const fetchVideos = () => {
-      fetch('/api/videos')
+      apiFetch('/api/videos')
         .then(res => {
           if (!res.ok) {
             throw new Error('Failed to fetch videos');
@@ -173,9 +174,9 @@ export default function VideoList() {
         const isConverting = video.status === 'converting';
         
         return isReady ? (
-          <Link 
+          <Link
             key={video.id}
-            href={`/videos/${video.id}`}
+            href={`/videos?id=${video.id}`}
             className={`bg-white rounded-lg shadow-md overflow-hidden transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 hover:shadow-lg hover:scale-[1.02] cursor-pointer`}
           >
           {/* Video Thumbnail */}

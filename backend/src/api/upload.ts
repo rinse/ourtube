@@ -1,37 +1,78 @@
-import { UploadResponse } from "../api-schemas";
-import { Database, VideoMetadata } from "../database";
-import { VideoStorage } from "../storage/createVideoStorage";
-import { unlink } from "../utils";
-import { generateVideoId } from "../video-processor";
+import { CreateUploadResponse } from '../api-schemas';
+import { MetadataStore } from '../metadata/MetadataStore';
+import { VideoMetadata } from '../metadata/VideoMetadata';
+import { VideoStorage } from '../storage/VideoStorage';
+import { Converter } from '../converter/Converter';
+import { IllegalArgumentError } from '../utils';
 
-export async function uploadVideo(
-  deps: { storage: VideoStorage, database: Database },
-  title: string,
-  file: Express.Multer.File,
-): Promise<UploadResponse | null> {
-  const videoId = await generateVideoId(file.path);
-  const existingVideo = await deps.database.getVideoMetadata(videoId);
-  if (existingVideo != null) {
-    if (existingVideo.status !== 'failed') {
-      // Do nothing if video already exists and is not failed
-      return null;
-    }
-    // Delete existing file and re-upload if status is failed
-    await unlink(file.path);
+const SHA256_RE = /^[0-9a-f]{64}$/;
+
+export type CreateUploadInput = {
+  sha256: string;
+  fileName: string;
+  title?: string;
+  contentType?: string;
+};
+
+/**
+ * Step 1 of the upload flow. The browser has already computed the content
+ * SHA256 (which becomes the immutable video id), so we can dedup against
+ * DynamoDB *before* any bytes move, then hand back a presigned PUT URL the
+ * browser uploads to directly.
+ *
+ * Returns null when the video already exists and is not in a failed state.
+ */
+export async function createUpload(
+  deps: { storage: VideoStorage; metadata: MetadataStore },
+  input: CreateUploadInput,
+): Promise<CreateUploadResponse | null> {
+  const sha256 = input.sha256?.toLowerCase();
+  if (!SHA256_RE.test(sha256 ?? '')) {
+    throw new IllegalArgumentError('sha256 must be a 64-character hex string');
   }
+
+  const existing = await deps.metadata.get(sha256);
+  if (existing != null && existing.status !== 'failed') {
+    return null; // already uploaded (ready or converting)
+  }
+
+  const title = input.title?.trim() || stripExtension(input.fileName);
   const metadata: VideoMetadata = {
-    id: videoId,
-    title: title,
+    id: sha256,
+    title,
     status: 'converting',
     created_at: new Date().toISOString(),
-    has_thumbnail: false
+    has_thumbnail: false,
   };
-  await deps.database.saveVideoMetadata(metadata);
-  deps.storage.create(videoId, file.path); // start conversion in background
+  await deps.metadata.save(metadata);
+
+  const uploadUrl = await deps.storage.presignUpload(sha256, input.contentType);
   return {
-    message: 'Video uploaded successfully',
-    status: 'converting',
-    videoId,
+    videoId: sha256,
     title,
+    status: 'converting',
+    uploadUrl,
+    key: deps.storage.uploadKey(sha256),
   };
+}
+
+/**
+ * Step 2 of the upload flow. Called by the browser once the PUT to S3 succeeds;
+ * starts conversion (local ffmpeg in dev, MediaConvert job in prod). Returns
+ * false if the video record is unknown.
+ */
+export async function completeUpload(
+  deps: { metadata: MetadataStore; converter: Converter },
+  videoId: string,
+): Promise<boolean> {
+  const metadata = await deps.metadata.get(videoId);
+  if (metadata == null) {
+    return false;
+  }
+  await deps.converter.startConversion(videoId);
+  return true;
+}
+
+function stripExtension(fileName: string): string {
+  return fileName.replace(/\.[^/.]+$/, '');
 }

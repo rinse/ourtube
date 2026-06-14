@@ -1,0 +1,63 @@
+name: Deploy
+
+# Manual, human-approved deploy. A human picks the branch/ref and the
+# `production` GitHub Environment's required-reviewer rule gates the run.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch or ref to deploy'
+        required: true
+        default: 'main'
+  # TEMPORARY: workflow_dispatch only runs from the default branch, so until this
+  # is merged to main we trigger on pushes to the feature branch to validate the
+  # pipeline. The `production` environment approval still gates the deploy.
+  # REMOVE this push: block after merging to main.
+  push:
+    branches: [refactor/aws-native]
+
+permissions:
+  id-token: write # OIDC for AWS
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production # requires reviewer approval (configure in repo settings)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # workflow_dispatch -> chosen ref; push -> the pushed branch.
+          ref: ${{ inputs.ref || github.ref_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install backend deps
+        run: npm ci
+        working-directory: backend
+
+      - name: Build static frontend
+        run: npm ci && npm run build
+        working-directory: frontend
+        env:
+          NEXT_EXPORT: 'true'
+
+      - name: Install infra deps
+        run: npm ci
+        working-directory: infra
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: CDK deploy
+        run: npx cdk deploy --require-approval never
+        working-directory: infra
+        env:
+          CDK_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+          APP_SECRET: ${{ secrets.APP_SECRET }}
+          BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}

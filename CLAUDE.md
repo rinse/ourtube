@@ -4,173 +4,77 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A YouTube-like video streaming service built with modern web technologies. The service supports video upload, automatic HLS conversion, and streaming playback optimized for mobile devices.
+OurTube — a personal (single-user) YouTube-like video service. Upload → HLS
+conversion → streaming. The stack is AWS-serverless but runs fully locally for
+fast development. See `docs/architecture.md` for the full picture.
 
-## Architecture
+## Architecture (current)
 
-### Technology Stack
-- **Frontend**: Next.js 15.3.5 (App Router), React 19, TypeScript, Tailwind CSS
-- **Backend**: Express.js 5.x, TypeScript, SQLite3, Multer
-- **Video Processing**: ffmpeg for HLS conversion, SHA256 for video ID generation
-- **Streaming**: HLS.js for adaptive bitrate streaming
+- **API**: single Lambda behind a Function URL, wrapped by `@codegenie/serverless-express`.
+  The Express app is a factory (`backend/src/app.ts` `createApp(deps)`) shared by the
+  local server (`backend/src/server.ts`) and the Lambda adapter (`backend/src/lambda/api.ts`).
+- **Metadata**: DynamoDB single table via `MetadataStore` / `DynamoMetadataStore`
+  (`backend/src/metadata/`). Schema: `docs/dynamodb-schema.md`. Local: DynamoDB Local.
+- **Storage**: S3 via `VideoStorage` / `S3VideoStorage` (`backend/src/storage/`),
+  pure I/O + presign. Local: MinIO (S3 SDK + custom endpoint).
+- **Conversion**: `Converter` abstraction. Prod = `MediaConvertConverter` (submits a
+  job) + `backend/src/lambda/conversion.ts` (EventBridge completion → `finalize`).
+  Local = `LocalFfmpegConverter` (ffmpeg in-process, background).
+- **AI**: `GenAI` with `BedrockGenAI` (prod) / `LMStudioGenAI` / `OpenAIGenAI`.
+- **Auth**: shared secret → HMAC httpOnly session cookie (`backend/src/auth/`),
+  `/api/*` guarded. `AUTH_BYPASS=1` locally.
+- **Frontend**: Next.js static export (`output: 'export'`), client-rendered, calls
+  same-origin `/api/*`. Detail page is `/videos?id=...` (no dynamic route, for static export).
+- **Delivery**: CloudFront fronts the SPA (S3+OAC) and proxies `/api/*` to the Lambda.
+  HLS playback is single-path: the API serves `index.m3u8` rewritten so segment lines
+  are presigned S3/MinIO GET URLs; segments are fetched directly by the browser.
+- **IaC**: AWS CDK (`infra/`). **CI/CD**: GitHub Actions (`.github/workflows/`),
+  deploy is manual `workflow_dispatch` + `production` Environment approval + OIDC.
 
-### Project Structure
-```
-videoplayer/
-├── frontend/          # Next.js application
-│   ├── app/          # App Router pages and components
-│   │   ├── components/   # Reusable components
-│   │   ├── upload/      # Upload page
-│   │   └── videos/      # Video player pages
-│   └── next.config.ts   # API proxy configuration
-└── backend/           # Express.js API server
-    ├── src/          # TypeScript source files
-    │   ├── app.ts           # Main application
-    │   ├── database.ts      # SQLite database layer
-    │   └── video-processor.ts # Video conversion logic
-    ├── uploads/      # Temporary upload storage
-    ├── videos/       # Converted HLS video storage
-    └── videos.db     # SQLite database file
+## Dependency wiring
 
-## Development Commands
+`backend/src/config.ts` builds `AppConfig` from env; `backend/src/dependencies.ts`
+constructs `{ metadata, storage, converter, genAI }`. Handlers take these deps —
+do not reach for globals.
 
-### Frontend (Port 3000)
-```bash
-cd frontend
-npm install
-npm run dev    # Development server
-npm run build  # Production build
-npm run lint   # ESLint
-```
-
-### Backend (Port 4000)
-```bash
-cd backend
-npm install
-npm run dev    # Development server with nodemon
-npm run build  # TypeScript compilation
-npm start      # Production server
-```
-
-## Server Process Management
-
-Kill existing processes if ports are occupied:
+## Commands
 
 ```bash
-# Quick cleanup
-lsof -ti:3000 | xargs kill -9  # Frontend
-lsof -ti:4000 | xargs kill -9  # Backend
+# Local dev (MinIO + DynamoDB Local + backend:4000 + frontend:3000)
+bash scripts/dev.sh
+
+# Backend
+cd backend && npm run dev        # nodemon (src/server.ts)
+cd backend && npm run typecheck  # tsc --noEmit
+cd backend && npm test           # vitest
+
+# Frontend
+cd frontend && npm run dev
+cd frontend && NEXT_EXPORT=true npm run build   # static export to out/
+
+# Infra
+cd infra && npm run synth
+cd infra && npm run deploy        # cdk deploy (normally via GitHub Actions)
 ```
 
-## Database Schema
+## Conventions / gotchas
 
-SQLite database (`videos.db`) with single table:
+- **No SQLite, no multer, no S3-event trigger** — these were removed. Upload is
+  browser SHA256 → `POST /api/uploads` (presigned PUT, dedup) → PUT to S3 →
+  `POST /api/uploads/:id/complete` (starts conversion).
+- **Status** is only `converting | ready | failed` (no `pending`). `has_thumbnail`
+  is a native boolean.
+- **Thumbnail** filename is `thumbnail.jpg` (both converters).
+- Keep storage/metadata interfaces thin so unit tests use in-memory fakes
+  (`InMemoryMetadataStore`, hand-rolled storage fakes) without AWS.
+- Tests live next to code as `*.test.ts` (vitest), excluded from the tsc build.
+- The sandbox sometimes denies `rm`; use `git rm`. Branch with `git switch -c`.
 
-```sql
-CREATE TABLE videos (
-  id TEXT PRIMARY KEY,              -- SHA256 hash of video file
-  title TEXT NOT NULL,              -- Video title
-  folder TEXT NOT NULL,             -- Storage folder (same as id)
-  status TEXT NOT NULL DEFAULT 'converting',  -- converting|ready|failed
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-```
+## Database schema
 
-## API Endpoints
+DynamoDB single table `videoplayer` — see `docs/dynamodb-schema.md`.
 
-### General
-- `GET /api` - Service status
-- `GET /api/health` - Health check
+## API endpoints
 
-### Video Operations
-- `GET /api/videos` - List all videos with status
-  ```json
-  {
-    "videos": [
-      {
-        "id": "sha256_hash",
-        "title": "Video Title",
-        "hlsUrl": "/api/videos/sha256_hash",
-        "status": "ready"
-      }
-    ],
-    "count": 1
-  }
-  ```
-
-- `GET /api/videos/:videoid` - HLS manifest (.m3u8)
-- `GET /api/videos/:videoid/:filename` - HLS segments (.ts, .vtt, .m3u8)
-- `GET /api/videos/:videoid/info` - Video metadata
-
-### Upload & Conversion
-- `POST /api/upload` - Upload video (multipart/form-data)
-  - Field: `video` (file)
-  - Field: `title` (string, optional)
-  - Returns: `{ videoId, title, status: "converting" }`
-  
-- `GET /api/conversion-status/:videoid` - Individual conversion status
-- `GET /api/conversion-status` - All conversion jobs
-
-## Video Processing Flow
-
-1. **Upload**: Video uploaded to `backend/uploads/` (temporary)
-2. **ID Generation**: SHA256 hash of file content becomes video ID
-3. **Database Entry**: Record created with `status: 'converting'`
-4. **Background Conversion**: ffmpeg converts to HLS format
-   ```bash
-   ffmpeg -i input.mp4 -c:v libx264 -c:a aac \
-     -hls_time 10 -hls_list_size 0 -hls_playlist_type vod \
-     -f hls output/index.m3u8
-   ```
-5. **Storage**: HLS files saved to `backend/videos/<video-id>/`
-6. **Status Update**: Database updated to `status: 'ready'`
-7. **Cleanup**: Original upload file deleted
-
-## Frontend Features
-
-### Video List (`/`)
-- Auto-refreshes every 5 seconds if converting videos exist
-- Shows status indicators:
-  - ✅ Ready: Clickable, green checkmark
-  - ⏳ Converting: Not clickable, spinning loader
-  - ❌ Failed: Not clickable, error icon
-
-### Upload Page (`/upload`)
-- File selection via dialog or path input
-- Optional title (uses filename if empty)
-- Duplicate detection via SHA256
-- Loading states and error handling
-
-### Video Player (`/videos/[id]`)
-- HLS.js integration
-- Mobile-optimized layout
-- Fullscreen support
-- Error recovery
-- **Unmuted auto-play by default** - Videos start playing automatically with sound enabled
-
-## Common Tasks
-
-### Add Sample Video Manually
-```bash
-# 1. Convert video to HLS
-ffmpeg -i input.mp4 -f hls -hls_time 10 -hls_list_size 0 \
-  -hls_playlist_type vod backend/videos/VIDEO_ID/index.m3u8
-
-# 2. Update database
-cd backend
-node dist/migrate-sample.js
-```
-
-### Debug Video Issues
-- Check video status: `sqlite3 backend/videos.db "SELECT * FROM videos;"`
-- Check conversion logs: Backend console output
-- Verify HLS files: `ls backend/videos/<video-id>/`
-- Test manifest: `curl http://localhost:4000/api/videos/<video-id>`
-
-## Important Notes
-
-- Maximum upload size: 5GB (configurable in `app.ts`)
-- Supported formats: Any video/* MIME type
-- Frontend auto-proxies `/api/*` to backend port 4000
-- All timestamps use ISO 8601 format
-- Video IDs are immutable (based on file content)
+See README.md (table). Public: `/api/login`, `/api/logout`, `/api/health`.
+Everything else under `/api/*` requires the session cookie.
