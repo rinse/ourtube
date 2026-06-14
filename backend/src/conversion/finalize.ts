@@ -11,6 +11,16 @@ export async function finalizeConversion(
   videoId: string,
   success: boolean,
 ): Promise<void> {
+  // EventBridge delivers at-least-once, so MediaConvert COMPLETE/ERROR events
+  // may be redelivered after this video has already been finalized. If it's
+  // already in a terminal state, treat this as a no-op rather than risk
+  // re-deriving (and flipping) fields like has_thumbnail.
+  const existing = await deps.metadata.get(videoId);
+  if (existing && (existing.status === 'ready' || existing.status === 'failed')) {
+    console.log(`[${videoId}] finalizeConversion: already ${existing.status}, skipping duplicate event`);
+    return;
+  }
+
   if (!success) {
     await deps.metadata.updateStatus(videoId, 'failed');
     await safeDeleteUpload(deps, videoId);
