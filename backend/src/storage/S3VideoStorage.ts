@@ -92,18 +92,7 @@ export class S3VideoStorage implements VideoStorage {
   async delete(videoId: string): Promise<boolean> {
     try {
       const prefix = `${this.cfg.videosPrefix}${videoId}/`;
-      const listed = await this.s3.send(new ListObjectsV2Command({
-        Bucket: this.cfg.bucketName,
-        Prefix: prefix,
-      }));
-      const objects = (listed.Contents ?? []).map((o) => ({ Key: o.Key! }));
-      if (objects.length === 0) {
-        return true;
-      }
-      await this.s3.send(new DeleteObjectsCommand({
-        Bucket: this.cfg.bucketName,
-        Delete: { Objects: objects },
-      }));
+      await deleteByPrefix(this.s3, this.cfg.bucketName, prefix);
       return true;
     } catch (error) {
       console.error(`Failed to delete video ${videoId} from S3:`, error);
@@ -188,5 +177,63 @@ export class S3VideoStorage implements VideoStorage {
     } catch {
       return false;
     }
+  }
+}
+
+const DELETE_OBJECTS_LIMIT = 1000;
+
+/**
+ * Minimal S3 client surface needed for `deleteByPrefix`, so the pagination
+ * and chunked-delete logic can be unit tested without AWS or `S3Client`.
+ */
+export type DeletePrefixS3Client = {
+  send(command: ListObjectsV2Command): Promise<{ Contents?: { Key?: string }[]; IsTruncated?: boolean; NextContinuationToken?: string }>;
+  send(command: DeleteObjectsCommand): Promise<unknown>;
+};
+
+/** Splits an array into chunks of at most `size` items each. */
+export function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+/** Lists every key under `prefix` by following `ListObjectsV2` pagination. */
+export async function listAllKeys(s3: DeletePrefixS3Client, bucket: string, prefix: string): Promise<string[]> {
+  const keys: string[] = [];
+  let continuationToken: string | undefined;
+  do {
+    const listed = await s3.send(new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: prefix,
+      ...(continuationToken ? { ContinuationToken: continuationToken } : {}),
+    }));
+    for (const obj of listed.Contents ?? []) {
+      if (obj.Key) {
+        keys.push(obj.Key);
+      }
+    }
+    continuationToken = listed.IsTruncated ? listed.NextContinuationToken : undefined;
+  } while (continuationToken);
+  return keys;
+}
+
+/**
+ * Deletes every object under `prefix`, paginating `ListObjectsV2` and
+ * splitting `DeleteObjects` calls into chunks of at most
+ * `DELETE_OBJECTS_LIMIT` keys each (the S3 API limit per call).
+ */
+export async function deleteByPrefix(s3: DeletePrefixS3Client, bucket: string, prefix: string): Promise<void> {
+  const keys = await listAllKeys(s3, bucket, prefix);
+  if (keys.length === 0) {
+    return;
+  }
+  for (const chunk of chunkArray(keys, DELETE_OBJECTS_LIMIT)) {
+    await s3.send(new DeleteObjectsCommand({
+      Bucket: bucket,
+      Delete: { Objects: chunk.map((Key) => ({ Key })) },
+    }));
   }
 }
