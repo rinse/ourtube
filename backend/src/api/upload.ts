@@ -60,6 +60,12 @@ export async function createUpload(
  * Step 2 of the upload flow. Called by the browser once the PUT to S3 succeeds;
  * starts conversion (local ffmpeg in dev, MediaConvert job in prod). Returns
  * false if the video record is unknown.
+ *
+ * Idempotent: conversion is only (re-)started while the record is still in
+ * `converting`. A repeated `/complete` call (double submit, or a retry after
+ * conversion already finished) must not re-trigger conversion — the source
+ * file has already been deleted by then, so re-running it would only flip a
+ * `ready` video to `failed`.
  */
 export async function completeUpload(
   deps: { metadata: MetadataStore; converter: Converter },
@@ -69,7 +75,9 @@ export async function completeUpload(
   if (metadata == null) {
     return false;
   }
-  await deps.converter.startConversion(videoId);
+  if (metadata.status === 'converting') {
+    await deps.converter.startConversion(videoId);
+  }
   return true;
 }
 
