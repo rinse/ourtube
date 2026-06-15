@@ -164,7 +164,10 @@ export class S3VideoStorage implements VideoStorage {
       .map((o) => o.Key!)
       .find((key) => /\.jpg$/i.test(key) && !key.endsWith('thumbnail.jpg'));
     if (!captured) {
-      return false;
+      // Nothing left to rename — either there never was a frame capture, or a
+      // previous (duplicate) invocation already renamed it. Check whether the
+      // canonical thumbnail already exists so this method is idempotent.
+      return this.existsFile(videoId, 'thumbnail.jpg');
     }
     const target = `${prefix}thumbnail.jpg`;
     await this.s3.send(new CopyObjectCommand({
