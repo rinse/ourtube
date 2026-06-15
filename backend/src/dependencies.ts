@@ -1,6 +1,8 @@
 import { AppConfig } from './config';
 import { MetadataStore } from './metadata/MetadataStore';
 import { DynamoMetadataStore } from './metadata/DynamoMetadataStore';
+import { PlaylistStore } from './playlist/PlaylistStore';
+import { DynamoPlaylistStore } from './playlist/DynamoPlaylistStore';
 import { VideoStorage } from './storage/VideoStorage';
 import { S3VideoStorage } from './storage/S3VideoStorage';
 import { Converter } from './converter/Converter';
@@ -11,6 +13,7 @@ import { GenAI, createGenAI } from './genai/GenAI';
 export type Dependencies = {
   config: AppConfig;
   metadata: MetadataStore;
+  playlist: PlaylistStore;
   storage: VideoStorage;
   converter: Converter;
   genAI: GenAI;
@@ -18,6 +21,12 @@ export type Dependencies = {
 
 export function createDependencies(config: AppConfig): Dependencies {
   const metadata = new DynamoMetadataStore({
+    tableName: config.metadata.tableName,
+    awsRegion: config.awsRegion,
+    endpoint: config.metadata.endpoint,
+  });
+
+  const playlist = new DynamoPlaylistStore({
     tableName: config.metadata.tableName,
     awsRegion: config.awsRegion,
     endpoint: config.metadata.endpoint,
@@ -47,7 +56,7 @@ export function createDependencies(config: AppConfig): Dependencies {
 
   const genAI = createGenAI({ metadata, config });
 
-  return { config, metadata, storage, converter, genAI };
+  return { config, metadata, playlist, storage, converter, genAI };
 }
 
 function requireConfig(value: string | undefined, name: string): string {

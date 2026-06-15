@@ -13,7 +13,7 @@ interface VideoInfo {
   hlsUrl: string;
 }
 
-function VideoDetail({ videoId }: { videoId: string }) {
+function VideoDetail({ videoId, playlistId }: { videoId: string; playlistId?: string }) {
   const router = useRouter();
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -161,7 +161,7 @@ function VideoDetail({ videoId }: { videoId: string }) {
             </div>
           </div>
           <div className="lg:col-span-1 px-4 sm:px-0">
-            <VideoListSidebar currentVideoId={videoId} />
+            <VideoListSidebar currentVideoId={videoId} playlistId={playlistId} />
           </div>
         </div>
       </main>
@@ -193,7 +193,9 @@ function VideoDetail({ videoId }: { videoId: string }) {
 }
 
 function VideoPageInner() {
-  const id = useSearchParams().get('id');
+  const searchParams = useSearchParams();
+  const id = searchParams.get('id');
+  const playlist = searchParams.get('playlist');
   if (!id) {
     return (
       <div className="min-h-screen bg-gray-100">
@@ -202,7 +204,7 @@ function VideoPageInner() {
       </div>
     );
   }
-  return <VideoDetail videoId={id} />;
+  return <VideoDetail videoId={id} playlistId={playlist ?? undefined} />;
 }
 
 export default function VideoPage() {
