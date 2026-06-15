@@ -57,7 +57,7 @@ YouTube ライクな個人用動画配信サービスを AWS サーバーレス�
 - **動画変換は MediaConvert**。5GB 級でも時間制限なく処理でき、ffmpeg 運用が不要。ローカルは既存 ffmpeg をスタンドインに流用。
 - **メタデータは DynamoDB シングルテーブル**（[dynamodb-schema.md](./dynamodb-schema.md)）。SQLite の 0/1→boolean 強制は不要なため撤去。
 - **認証は共有秘密 → httpOnly セッション Cookie**（`/api/*` をガード）。「認証は省略しつつ自分だけ」を最小実装で満たす。ローカルは `AUTH_BYPASS`。
-- **再生は単一パス**：マニフェスト書き換え + presigned セグメント。CloudFront 署名 Cookie/OAC-for-videos は採用せず（local/prod 二重パスとキー管理を避けるため）。CloudFront は静的 SPA 配信と API キャッシュに限定。
+- **再生は単一パス**：マニフェスト書き換え + presigned セグメント。CloudFront 署名 Cookie/OAC-for-videos は採用せず（local/prod 二重パスとキー管理を避けるため）。CloudFront は静的 SPA 配信と `/api/*` のプロキシ（キャッシュ無効・CACHING_DISABLED）に限定。
 - **変換トリガは S3 イベントではなく `complete` 呼び出し**。インフラを簡素化し local/prod を統一。堅牢性は Conversion Lambda（完了イベント）側で担保。
 - **静的 SPA は S3 + CloudFront**。Next.js を `output: 'export'` で静的化。
 - **IaC は AWS CDK (TypeScript)**、デプロイは GitHub Actions の `workflow_dispatch` + Environment 承認（人間承認）。
