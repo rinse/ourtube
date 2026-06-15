@@ -67,6 +67,14 @@ WAF / CloudFront / Lambda URL の防御構成とデプロイ前提は [docs/secu
 | POST | `/api/uploads` | presigned PUT 発行（重複チェック） |
 | POST | `/api/uploads/:id/complete` | 変換開始 |
 | POST | `/api/suggest-video-title` | タイトルサジェスト |
+| GET | `/api/playlists` | プレイリスト一覧（新着順） |
+| POST | `/api/playlists` | プレイリスト作成 |
+| GET | `/api/playlists/:id` | 構成動画を順序付きで解決（欠損はスキップ） |
+| PUT | `/api/playlists/:id` | リネーム |
+| DELETE | `/api/playlists/:id` | 削除 |
+| POST | `/api/playlists/:id/videos` | 動画を追加（末尾・重複排除） |
+| DELETE | `/api/playlists/:id/videos/:videoId` | 動画を削除 |
+| PUT | `/api/playlists/:id/videos` | 並べ替え（`{ videoIds }`） |
 
 ## ディレクトリ
 

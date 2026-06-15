@@ -21,17 +21,49 @@ interface VideoListResponse {
   count: number;
 }
 
-interface VideoListSidebarProps {
-  currentVideoId?: string;
+interface PlaylistDetailResponse {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  videos: Video[];
 }
 
-export default function VideoListSidebar({ currentVideoId }: VideoListSidebarProps) {
+interface VideoListSidebarProps {
+  currentVideoId?: string;
+  playlistId?: string;
+}
+
+export default function VideoListSidebar({ currentVideoId, playlistId }: VideoListSidebarProps) {
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { durations, fetchDurations } = useVideoDurations();
 
   useEffect(() => {
+    setLoading(true);
+    setError(null);
+
+    if (playlistId) {
+      apiFetch(`/api/playlists/${playlistId}`)
+        .then(res => {
+          if (!res.ok) {
+            throw new Error('Failed to fetch playlist');
+          }
+          return res.json();
+        })
+        .then((data: PlaylistDetailResponse) => {
+          setVideos(data.videos);
+          setLoading(false);
+          fetchDurations(data.videos);
+        })
+        .catch(err => {
+          setError(err.message);
+          setLoading(false);
+        });
+      return;
+    }
+
     let intervalId: NodeJS.Timeout | null = null;
 
     const fetchVideos = () => {
@@ -45,16 +77,16 @@ export default function VideoListSidebar({ currentVideoId }: VideoListSidebarPro
         .then((data: VideoListResponse) => {
           setVideos(data.videos);
           setLoading(false);
-          
+
           // Fetch durations for ready videos
           fetchDurations(data.videos);
-          
+
           // Clear any existing interval
           if (intervalId) {
             clearInterval(intervalId);
             intervalId = null;
           }
-          
+
           // Only set up interval if there are converting videos
           const hasConvertingVideos = data.videos.some(v => v.status === 'converting');
           if (hasConvertingVideos) {
@@ -75,7 +107,7 @@ export default function VideoListSidebar({ currentVideoId }: VideoListSidebarPro
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [fetchDurations]);
+  }, [fetchDurations, playlistId]);
 
   if (loading) {
     return (
@@ -186,8 +218,12 @@ export default function VideoListSidebar({ currentVideoId }: VideoListSidebarPro
           </div>
         );
 
+        const href = playlistId
+          ? `/videos?id=${video.id}&playlist=${playlistId}`
+          : `/videos?id=${video.id}`;
+
         return isReady ? (
-          <Link key={video.id} href={`/videos?id=${video.id}`} className="block">
+          <Link key={video.id} href={href} className="block">
             {videoCard}
           </Link>
         ) : (

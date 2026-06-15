@@ -1,7 +1,7 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import { Dependencies } from './dependencies';
 import { createAuth } from './auth';
-import { ApiErrorResponse, DeleteVideoResponse, UpdateVideoResponse, SuggestVideoTitleResponse } from './api-schemas';
+import { ApiErrorResponse, DeleteVideoResponse, UpdateVideoResponse, SuggestVideoTitleResponse, OkResponse } from './api-schemas';
 import { listVideos } from './api/videos/list';
 import { getVideo } from './api/videos/get';
 import { getVideoFile, VideoFile } from './api/videos/video/file';
@@ -9,6 +9,12 @@ import { deleteVideo } from './api/videos/video/delete';
 import { updateVideoTitle } from './api/videos/update';
 import { createUpload, completeUpload } from './api/upload';
 import { suggetVideoTitle } from './api/suggest-video-title';
+import { listPlaylists } from './api/playlists/list';
+import { createPlaylist } from './api/playlists/create';
+import { getPlaylist } from './api/playlists/get';
+import { renamePlaylist } from './api/playlists/update';
+import { deletePlaylist } from './api/playlists/delete';
+import { addPlaylistVideo, removePlaylistVideo, reorderPlaylistVideos } from './api/playlists/members';
 import { IllegalArgumentError } from './utils';
 
 /**
@@ -194,6 +200,146 @@ export function createApp(deps: Dependencies): Express {
     }
   });
 
+  // --- Playlists (all session-guarded by the app.use('/api', auth.guard) above) ---
+
+  app.get('/api/playlists', async (_req: Request, res: Response) => {
+    try {
+      res.json(await listPlaylists(deps));
+    } catch (error) {
+      console.error('Error on GET /api/playlists', error);
+      res.status(500).json(internalServerError());
+    }
+  });
+
+  app.post('/api/playlists', async (req: Request, res: Response) => {
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    if (name === '') {
+      res.status(400).json({ error: 'Invalid input', message: 'name is required and must be a non-empty string' } satisfies ApiErrorResponse);
+      return;
+    }
+    try {
+      res.status(201).json(await createPlaylist(deps, name));
+    } catch (error) {
+      console.error('Error on POST /api/playlists', error);
+      res.status(500).json(internalServerError());
+    }
+  });
+
+  app.get('/api/playlists/:playlistId', async (req: Request, res: Response) => {
+    const { playlistId } = req.params;
+    try {
+      const playlist = await getPlaylist(deps, playlistId);
+      if (playlist == null) {
+        res.status(404).json(playlistNotFoundError(playlistId));
+        return;
+      }
+      res.json(playlist);
+    } catch (error) {
+      console.error(`Error on GET /api/playlists/${playlistId}`, error);
+      res.status(500).json(internalServerError());
+    }
+  });
+
+  app.put('/api/playlists/:playlistId', async (req: Request, res: Response) => {
+    const { playlistId } = req.params;
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    if (name === '') {
+      res.status(400).json({ error: 'Invalid input', message: 'name is required and must be a non-empty string' } satisfies ApiErrorResponse);
+      return;
+    }
+    try {
+      const updated = await renamePlaylist(deps, playlistId, name);
+      if (!updated) {
+        res.status(404).json(playlistNotFoundError(playlistId));
+        return;
+      }
+      res.json({ message: 'ok' } satisfies OkResponse);
+    } catch (error) {
+      console.error(`Error on PUT /api/playlists/${playlistId}`, error);
+      res.status(500).json(internalServerError());
+    }
+  });
+
+  app.delete('/api/playlists/:playlistId', async (req: Request, res: Response) => {
+    const { playlistId } = req.params;
+    try {
+      const deleted = await deletePlaylist(deps, playlistId);
+      if (!deleted) {
+        res.status(404).json(playlistNotFoundError(playlistId));
+        return;
+      }
+      res.json({ message: 'ok' } satisfies OkResponse);
+    } catch (error) {
+      console.error(`Error on DELETE /api/playlists/${playlistId}`, error);
+      res.status(500).json(internalServerError());
+    }
+  });
+
+  app.post('/api/playlists/:playlistId/videos', async (req: Request, res: Response) => {
+    const { playlistId } = req.params;
+    const videoId = typeof req.body?.videoId === 'string' ? req.body.videoId : '';
+    if (videoId === '') {
+      res.status(400).json({ error: 'Invalid input', message: 'videoId is required and must be a string' } satisfies ApiErrorResponse);
+      return;
+    }
+    try {
+      const result = await addPlaylistVideo(deps, playlistId, videoId);
+      switch (result) {
+        case 'ok':
+          res.json({ message: 'ok' } satisfies OkResponse);
+          return;
+        case 'playlist_not_found':
+          res.status(404).json(playlistNotFoundError(playlistId));
+          return;
+        case 'video_not_found':
+          res.status(404).json(videoNotFoundError(videoId));
+          return;
+      }
+    } catch (error) {
+      console.error(`Error on POST /api/playlists/${playlistId}/videos`, error);
+      res.status(500).json(internalServerError());
+    }
+  });
+
+  app.delete('/api/playlists/:playlistId/videos/:videoId', async (req: Request, res: Response) => {
+    const { playlistId, videoId } = req.params;
+    try {
+      const removed = await removePlaylistVideo(deps, playlistId, videoId);
+      if (!removed) {
+        res.status(404).json(playlistNotFoundError(playlistId));
+        return;
+      }
+      res.json({ message: 'ok' } satisfies OkResponse);
+    } catch (error) {
+      console.error(`Error on DELETE /api/playlists/${playlistId}/videos/${videoId}`, error);
+      res.status(500).json(internalServerError());
+    }
+  });
+
+  app.put('/api/playlists/:playlistId/videos', async (req: Request, res: Response) => {
+    const { playlistId } = req.params;
+    const videoIds = req.body?.videoIds;
+    if (!Array.isArray(videoIds) || !videoIds.every((id) => typeof id === 'string')) {
+      res.status(400).json({ error: 'Invalid input', message: 'videoIds is required and must be an array of strings' } satisfies ApiErrorResponse);
+      return;
+    }
+    try {
+      const reordered = await reorderPlaylistVideos(deps, playlistId, videoIds);
+      if (!reordered) {
+        res.status(404).json(playlistNotFoundError(playlistId));
+        return;
+      }
+      res.json({ message: 'ok' } satisfies OkResponse);
+    } catch (error) {
+      if (error instanceof IllegalArgumentError) {
+        res.status(400).json({ error: 'Invalid input', message: error.message } satisfies ApiErrorResponse);
+        return;
+      }
+      console.error(`Error on PUT /api/playlists/${playlistId}/videos`, error);
+      res.status(500).json(internalServerError());
+    }
+  });
+
   app.use((req: Request, res: Response) => {
     res.status(404).json({ error: 'Not Found', message: `Route ${req.method} ${req.path} not found` } satisfies ApiErrorResponse);
   });
@@ -212,4 +358,8 @@ function internalServerError(): ApiErrorResponse {
 
 function videoNotFoundError(videoId: string): ApiErrorResponse {
   return { error: 'Video not found', message: `Video with ID ${videoId} does not exist` };
+}
+
+function playlistNotFoundError(playlistId: string): ApiErrorResponse {
+  return { error: 'Playlist not found', message: `Playlist with ID ${playlistId} does not exist` };
 }

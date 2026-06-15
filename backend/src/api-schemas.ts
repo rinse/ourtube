@@ -88,3 +88,31 @@ export const SuggestVideoTitleResponseCodec = t.type({
   suggestedTitle: t.string,
 });
 export type SuggestVideoTitleResponse = t.TypeOf<typeof SuggestVideoTitleResponseCodec>;
+
+// --- Playlists --------------------------------------------------------------
+
+// Lightweight playlist view for the list endpoint (no resolved videos).
+export const PlaylistSummaryCodec = t.type({
+  id: t.string,
+  name: t.string,
+  videoCount: t.number,
+  created_at: t.string,
+  updated_at: t.string,
+});
+export type PlaylistSummary = t.TypeOf<typeof PlaylistSummaryCodec>;
+
+export const PlaylistListResponseCodec = t.type({
+  playlists: t.array(PlaylistSummaryCodec),
+  count: t.number,
+});
+export type PlaylistListResponse = t.TypeOf<typeof PlaylistListResponseCodec>;
+
+// Full playlist with its videos resolved in order (missing/deleted skipped).
+export const PlaylistDetailResponseCodec = t.type({
+  id: t.string,
+  name: t.string,
+  created_at: t.string,
+  updated_at: t.string,
+  videos: t.array(VideoItemCodec),
+});
+export type PlaylistDetailResponse = t.TypeOf<typeof PlaylistDetailResponseCodec>;
