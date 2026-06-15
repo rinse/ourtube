@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { parseHLSDuration, formatDuration } from '../utils/video-duration';
+import { formatDuration } from '../utils/video-duration';
+import { useVideoDurations } from '../utils/useVideoDurations';
 import { apiFetch } from '../lib/api';
 
 interface Video {
@@ -28,26 +29,7 @@ export default function VideoListSidebar({ currentVideoId }: VideoListSidebarPro
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [durations, setDurations] = useState<Record<string, number | null>>({});
-
-  // Fetch durations for ready videos
-  const fetchDurations = useCallback(async (videos: Video[]) => {
-    const readyVideos = videos.filter(v => v.status === 'ready');
-    const newDurations: Record<string, number | null> = {};
-    
-    await Promise.all(
-      readyVideos.map(async (video) => {
-        if (!durations[video.id]) {
-          const duration = await parseHLSDuration(video.hlsUrl);
-          newDurations[video.id] = duration;
-        }
-      })
-    );
-    
-    if (Object.keys(newDurations).length > 0) {
-      setDurations(prev => ({ ...prev, ...newDurations }));
-    }
-  }, [durations]);
+  const { durations, fetchDurations } = useVideoDurations();
 
   useEffect(() => {
     let intervalId: NodeJS.Timeout | null = null;
