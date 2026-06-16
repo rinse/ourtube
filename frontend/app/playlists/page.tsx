@@ -460,36 +460,55 @@ function PlaylistDetail({ playlistId }: { playlistId: string }) {
           </div>
         ) : (
           <div className="space-y-3 mb-6">
-            {playlist.videos.map((video, index) => (
+            {playlist.videos.map((video, index) => {
+              const isReady = video.status === 'ready';
+              const media = (
+                <>
+                  <div className="w-24 sm:w-32 aspect-video relative bg-gradient-to-br from-gray-200 via-gray-300 to-gray-400 rounded shrink-0">
+                    {video.thumbnailUrl ? (
+                      <Image
+                        src={video.thumbnailUrl}
+                        alt={video.title}
+                        className="object-cover rounded"
+                        fill
+                        sizes="128px"
+                        onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+                          e.currentTarget.style.display = 'none';
+                          e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                        }}
+                      />
+                    ) : null}
+                    <div className={`absolute inset-0 flex items-center justify-center ${video.thumbnailUrl ? 'hidden' : ''}`}>
+                      <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm font-semibold text-gray-800 line-clamp-2 leading-tight">{video.title}</h3>
+                    <div className={`text-xs mt-1 ${
+                      video.status === 'ready' ? 'text-green-600' : video.status === 'converting' ? 'text-yellow-600' : 'text-red-600'
+                    }`}>
+                      {video.status === 'ready' ? 'Ready' : video.status === 'converting' ? 'Converting' : 'Failed'}
+                    </div>
+                  </div>
+                </>
+              );
+
+              return (
               <div key={video.id} className="bg-white rounded-lg shadow-sm overflow-hidden flex items-center gap-3 p-3">
-                <div className="w-24 sm:w-32 aspect-video relative bg-gradient-to-br from-gray-200 via-gray-300 to-gray-400 rounded shrink-0">
-                  {video.thumbnailUrl ? (
-                    <Image
-                      src={video.thumbnailUrl}
-                      alt={video.title}
-                      className="object-cover rounded"
-                      fill
-                      sizes="128px"
-                      onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
-                        e.currentTarget.style.display = 'none';
-                        e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                      }}
-                    />
-                  ) : null}
-                  <div className={`absolute inset-0 flex items-center justify-center ${video.thumbnailUrl ? 'hidden' : ''}`}>
-                    <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
+                {isReady ? (
+                  <Link
+                    href={`/videos?id=${video.id}&playlist=${playlistId}`}
+                    className="flex items-center gap-3 flex-1 min-w-0 hover:opacity-80 transition-opacity"
+                  >
+                    {media}
+                  </Link>
+                ) : (
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    {media}
                   </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-semibold text-gray-800 line-clamp-2 leading-tight">{video.title}</h3>
-                  <div className={`text-xs mt-1 ${
-                    video.status === 'ready' ? 'text-green-600' : video.status === 'converting' ? 'text-yellow-600' : 'text-red-600'
-                  }`}>
-                    {video.status === 'ready' ? 'Ready' : video.status === 'converting' ? 'Converting' : 'Failed'}
-                  </div>
-                </div>
+                )}
                 <div className="flex flex-col items-center gap-1 shrink-0">
                   <button
                     onClick={() => handleMove(index, -1)}
@@ -516,7 +535,8 @@ function PlaylistDetail({ playlistId }: { playlistId: string }) {
                   削除
                 </button>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
