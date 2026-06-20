@@ -30,9 +30,6 @@ export function createApp(deps: Dependencies): Express {
   app.use(express.urlencoded({ extended: true }));
 
   // --- Public routes (registered before the guard so they bypass auth) ---
-  app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
-  });
   app.post('/api/login', auth.login);
   app.post('/api/logout', auth.logout);
 

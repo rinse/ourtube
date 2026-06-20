@@ -191,14 +191,14 @@ function handler(event) {
     // the cost circuit-breaker against anonymous floods — combined with the Geo
     // allowlist and reserved concurrency. It only checks cookie *presence*; the
     // HMAC is still validated at the Lambda (no auth logic duplicated at edge).
-    // Public endpoints (login mints the cookie; health/logout need no session)
-    // pass through unconditionally.
+    // Public endpoints (login mints the cookie; logout needs no session) pass
+    // through unconditionally.
     const apiAuthGate = new cloudfront.Function(this, 'ApiAuthGate', {
       code: cloudfront.FunctionCode.fromInline(`
 function handler(event) {
   var req = event.request;
   var uri = req.uri;
-  if (uri === '/api/login' || uri === '/api/logout' || uri === '/api/health') {
+  if (uri === '/api/login' || uri === '/api/logout') {
     return req;
   }
   if (req.cookies && req.cookies['vp_session']) {
