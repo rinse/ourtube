@@ -57,7 +57,6 @@ CloudFront Geo restriction / 認証 / Lambda URL の防御構成は [docs/securi
 | メソッド | パス | 説明 |
 |---|---|---|
 | POST | `/api/login` / `/api/logout` | 認証（公開） |
-| GET | `/api/health` | ヘルスチェック（公開） |
 | GET | `/api/videos` | 一覧 |
 | GET | `/api/videos/:id` | メタデータ |
 | GET | `/api/videos/:id/index.m3u8` | HLS マニフェスト（書き換え済み） |

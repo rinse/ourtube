@@ -76,5 +76,5 @@ DynamoDB single table `videoplayer` — see `docs/dynamodb-schema.md`.
 
 ## API endpoints
 
-See README.md (table). Public: `/api/login`, `/api/logout`, `/api/health`.
+See README.md (table). Public: `/api/login`, `/api/logout`.
 Everything else under `/api/*` requires the session cookie.
