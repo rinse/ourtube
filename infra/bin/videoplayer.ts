@@ -4,6 +4,12 @@ import { VideoplayerStack } from '../lib/videoplayer-stack';
 
 const app = new cdk.App();
 
+// Cost-allocation tag applied to every resource in the app, so this project's
+// spend is filterable in Cost Explorer / Budgets. NOTE: the `Project` tag must
+// also be activated as a cost-allocation tag in the Billing console once (it
+// then takes ~24h to appear and only tags usage from activation onward).
+cdk.Tags.of(app).add('Project', 'OurTube');
+
 const account = process.env.CDK_DEFAULT_ACCOUNT;
 const region = process.env.CDK_DEFAULT_REGION ?? 'ap-northeast-1';
 

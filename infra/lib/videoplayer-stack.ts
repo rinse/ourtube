@@ -186,6 +186,33 @@ function handler(event) {
 }`),
     });
 
+    // Edge auth gate for /api/*: reject requests without the session cookie at
+    // the viewer-request stage, before they reach (and bill) the Lambda. This is
+    // the cost circuit-breaker against anonymous floods — combined with the Geo
+    // allowlist and reserved concurrency. It only checks cookie *presence*; the
+    // HMAC is still validated at the Lambda (no auth logic duplicated at edge).
+    // Public endpoints (login mints the cookie; health/logout need no session)
+    // pass through unconditionally.
+    const apiAuthGate = new cloudfront.Function(this, 'ApiAuthGate', {
+      code: cloudfront.FunctionCode.fromInline(`
+function handler(event) {
+  var req = event.request;
+  var uri = req.uri;
+  if (uri === '/api/login' || uri === '/api/logout' || uri === '/api/health') {
+    return req;
+  }
+  if (req.cookies && req.cookies['vp_session']) {
+    return req;
+  }
+  return {
+    statusCode: 403,
+    statusDescription: 'Forbidden',
+    headers: { 'content-type': { value: 'text/plain' } },
+    body: 'Forbidden'
+  };
+}`),
+    });
+
     // Import the shared wildcard cert (us-east-1) by ARN, if a domain is configured.
     const certificate = props.certificateArn
       ? acm.Certificate.fromCertificateArn(this, 'Certificate', props.certificateArn)
@@ -219,6 +246,10 @@ function handler(event) {
           allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
           cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
           originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+          functionAssociations: [{
+            function: apiAuthGate,
+            eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+          }],
         },
       },
       // No distribution-wide errorResponses: they would rewrite the API's own
