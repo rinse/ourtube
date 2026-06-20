@@ -44,8 +44,9 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: CDK deploy
-        # --all: the app now spans two stacks — OurtubeWafStack (us-east-1,
-        # CloudFront-scoped WAF) and VideoplayerStack (app). See docs/security.md.
+        # Single stack (VideoplayerStack). --all is harmless and future-proof.
+        # WAF was removed; access control is geo restriction + auth + reserved
+        # concurrency. See docs/security.md.
         run: npx cdk deploy --all --require-approval never
         working-directory: infra
         env:

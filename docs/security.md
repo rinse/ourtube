@@ -1,30 +1,38 @@
-# セキュリティ（CloudFront / WAF / Lambda URL の防御）
+# セキュリティ（CloudFront / Lambda URL の防御）
 
-公開（`https://ourtube.esnir.net`）に伴う攻撃面への対策。点検は Issue #8、設計判断は
-当初のセキュリティ強化計画に基づく。
+公開（`https://ourtube.esnir.net`）に伴う攻撃面への対策。点検は Issue #8。
+
+個人用・単一ユーザーのアプリなので、防御は **WAF を使わず**に以下で構成する。
+WAFv2 は web ACL の基本料金だけで $5/月、ルール込みで実質 ~$10/月の床があり、
+個人用途では費用対効果が見合わないため撤去した（Issue/コスト見直し）。
 
 ## 防御構成
 
 ```
-            ┌──────────── WAFv2 web ACL (CDK管理 / us-east-1) ────────────┐
- Browser ─► │ P0 geo: 非JP → Block                                        │
-            │ P1 rate: /api/* を IP単位 1000/5分 → Block                    │
-            │ P2-4 AWS Managed (IpReputation / Common / KnownBadInputs)    │
-            │        → Block(overrideAction=none)                          │
-            └───────────────────────────┬─────────────────────────────────┘
-                                        ▼
-                                  CloudFront (TLS1.2_2021 / HTTPS強制)
-                          default → S3(SPA, OAC) / api/* → Lambda URL(OAC, SigV4)
-                                        │
-                                        ▼  AuthType=AWS_IAM（直叩き不可）
-                                   API Lambda
+            ┌──────────── CloudFront ────────────┐
+ Browser ─► │ Geo restriction: 非JP → 403（無料） │
+            │ TLS1.2_2021 / HTTPS 強制             │
+            │ default → S3(SPA, OAC)              │
+            │ api/*  → Lambda URL(OAC, SigV4)     │
+            └──────────────┬─────────────────────┘
+                           ▼  AuthType=AWS_IAM（直叩き不可）
+                      API Lambda
+                      - HMAC セッション Cookie で /api/* をガード
+                      - reservedConcurrentExecutions=10（コスト上限）
 ```
 
-- **WAF は CDK 管理**（`infra/lib/waf-stack.ts`）。CLOUDFRONT スコープの WAFv2 は
-  **us-east-1 必須**のため `OurtubeWafStack` として別スタックにし、`VideoplayerStack`
-  へ cross-region 参照で ARN を渡す（`crossRegionReferences: true`）。
-- **ログ**: `aws-waf-logs-ourtube`（CloudWatch Logs、**保持1カ月**）。WAF→CloudWatch は
-  ロググループ名 `aws-waf-logs-` 接頭辞が必須。
+多層の役割分担:
+
+- **Geo restriction（CloudFront ネイティブ / 無料）**: 国の allowlist（`JP`）。非JP は
+  エッジで 403 になりオリジンへ到達しない。`infra/lib/videoplayer-stack.ts` の
+  `Distribution` の `geoRestriction: cloudfront.GeoRestriction.allowlist('JP')`。
+  これは**トラフィックフィルタであってアクセス境界ではない**。海外からアクセスする
+  ときはここに国を足す。
+- **アクセス境界 = HMAC セッション Cookie**（`backend/src/auth/`）。`/api/*` を全ガード。
+  認証の本体はこれ。Geo を通り抜けた JP 由来のボットも Cookie が無ければ 401/403。
+- **コスト上限 = Lambda 予約同時実行数**（`apiFn` の `reservedConcurrentExecutions: 10`）。
+  旧 WAF の `/api` レート制限の代替。無認証フラッド（認証層で弾かれる）でも Lambda の
+  実行数に天井があり、青天井の課金にならない。
 - **Lambda Function URL は OAC**（`FunctionUrlOrigin.withOriginAccessControl`）。
   `AuthType=AWS_IAM` にし、CloudFront だけが SigV4 署名で呼べる。CDK が Lambda 実行許可
   （`cloudfront.amazonaws.com` / `lambda:InvokeFunctionUrl` / source-arn=当該 distribution）
@@ -42,41 +50,18 @@ mutating メソッドに自動付与する（空本文は空文字のハッシ�
 - S3 への presigned PUT（`upload.ts`）は CloudFront を通らないため対象外。
 - ローカルでは Express がヘッダを無視するので無害。環境分岐は不要。
 
-## ⚠️ デプロイ前の手動前提
-
-1. **CloudFront ワンクリック保護（セキュリティ料金プラン）をコンソールで解約**する。
-   プラン契約中は web ACL を「削除も置換も不可」で 400 になる。CDK 管理 web ACL に
-   切替える前に解約必須。解約後、旧 `CreatedByCloudFront-...` web ACL は不要。
-2. **us-east-1 を bootstrap**: `cdk bootstrap aws://<account>/us-east-1`。新設の
-   `OurtubeWafStack` と cross-region 参照のカスタムリソースに必要。
-
-> GitHub Variable `CLOUDFRONT_WEB_ACL_ARN` は不要になった（web ACL は CDK 管理）。
-> 削除してよい。
-
 ## デプロイ
 
-`infra` で `npx cdk deploy --all`（2スタック）。GitHub Actions の Deploy も `--all` 済み。
-
-> **ログ配信の確認（要件: 1カ月ログ）**: `CfnLoggingConfiguration` はリソースとして
-> 作られるが、**ログが実際に流れるか**は別。WAF→CloudWatch Logs は対象ロググループへの
-> リソースポリシー（WAF ログ用プリンシパルの書込許可）が要る。PutLoggingConfiguration が
-> 自動付与する場合もあるが、CFN/CDK の L1 では付かずデプロイは成功してもログ0件、という
-> ことがある。**デプロイ後にテストリクエストを投げ、`aws-waf-logs-ourtube` にログストリーム
-> が出るか必ず確認**。出なければ `logs.CfnResourcePolicy` で WAF ログ用プリンシパルに書込を
-> 許可して再デプロイ（アカウントのリソースポリシー枠は10個までなので、不要なら先回りで
-> 足さない）。
-
-## 誤検知（正規アクセスがブロックされた）時の調査
-
-1. CloudWatch Logs `aws-waf-logs-ourtube`、または WebACL のサンプルリクエストで、どの
-   ルールの `terminatingRuleId` でブロックされたか確認。
-2. マネージドルールが原因なら、該当ルールを一時的に Count（`overrideAction: count`）へ
-   戻して再デプロイ → 影響を切り分け。
-3. レート制限なら `apiRateLimit`、地理ブロックなら `allowedCountries`（`waf-stack.ts`
-   の props）を調整。
+`infra` で `npx cdk deploy`（単一スタック `VideoplayerStack`）。GitHub Actions の Deploy も同様。
+us-east-1 の別スタックや cross-region 参照は不要になった（WAF 撤去に伴い）。
 
 ## 留意
 
-- geo block は IP 地理判定でベストエフォート。**利用者自身も日本国内からのアクセスが前提**。
-- `CommonRuleSet` の `SizeRestrictions_BODY`(8KB) 等が大きい本文を弾く可能性。API 本文は
-  小さく、動画は S3 直 PUT のため本アプリでは低リスク。
+- Geo restriction は IP 地理判定でベストエフォート。**利用者自身も日本国内からのアクセスが
+  前提**。海外時は `geoRestriction` の allowlist に国を追加して再デプロイ。
+- 動画セグメントは presigned S3 URL でブラウザが直接取得し、CloudFront / Geo を通らない。
+  これはマニフェスト取得時の認証でガードされる（時間制限付き URL）。
+- WAF を撤去したため、マネージドルール（SQLi 等の汎用攻撃シグネチャ）の多層防御は無い。
+  `/api/*` は認証必須・本文は小さい・動画は S3 直 PUT のため、個人用途では許容と判断。
+  必要になれば WAF を再導入するか、CloudFront Functions で簡易ゲート（Cookie 不在を 403）を
+  足せる（エッジでの HMAC 検証はしない＝認証ロジックの二重化を避ける）。
