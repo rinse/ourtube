@@ -113,15 +113,11 @@ dig +short ourtube.esnir.net           # CloudFront ドメインに解決され�
 curl -I https://ourtube.esnir.net      # 200/3xx + CloudFront ヘッダ
 ```
 
-## CloudFront の WAF（web ACL）について
+## アクセス制御について（WAF は撤去）
 
-WAF は **CDK 管理**になった（`infra/lib/waf-stack.ts` の `OurtubeWafStack`、us-east-1）。
-構成・前提手順・誤検知時の調査は **[docs/security.md](security.md)** を参照。
-
-> 旧方式（CloudFront ワンクリック保護の `CreatedByCloudFront-...` web ACL を
-> GitHub Variable `CLOUDFRONT_WEB_ACL_ARN` で参照）は廃止。この Variable は不要なので
-> 削除してよい。CDK 管理へ切替える前に、コンソールでワンクリック保護（料金プラン）を
-> **解約**すること（プラン契約中は web ACL の削除・置換が 400 で拒否される）。
+WAF は撤去した（コスト見直し）。アクセス制御は CloudFront ネイティブの Geo restriction
+（国 allowlist・無料）＋ HMAC 認証 Cookie＋ Lambda 予約同時実行数で構成する。
+詳細は **[docs/security.md](security.md)** を参照。
 
 ## 補足
 

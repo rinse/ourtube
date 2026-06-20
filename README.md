@@ -50,7 +50,7 @@ cd infra    && npm run synth
 （Actions 経由なら）Secrets `AWS_DEPLOY_ROLE_ARN`,`APP_SECRET` と Variables `AWS_REGION`,`BEDROCK_MODEL_ID`。
 
 カスタムドメイン（`ourtube.esnir.net`）の適用手順は [docs/custom-domain.md](docs/custom-domain.md)。
-WAF / CloudFront / Lambda URL の防御構成とデプロイ前提は [docs/security.md](docs/security.md)。
+CloudFront Geo restriction / 認証 / Lambda URL の防御構成は [docs/security.md](docs/security.md)。
 
 ## API エンドポイント
 

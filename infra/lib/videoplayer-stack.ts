@@ -32,10 +32,6 @@ export interface VideoplayerStackProps extends StackProps {
   certificateArn?: string;
   hostedZoneId?: string;
   hostedZoneName?: string;
-  // WAFv2 web ACL ARN (us-east-1 / CLOUDFRONT scope) to attach to the
-  // distribution. Now CDK-managed in WafStack and passed in by cross-region
-  // reference. Omit to run without a web ACL.
-  webAclId?: string;
 }
 
 const BACKEND = path.join(__dirname, '..', '..', 'backend');
@@ -98,6 +94,11 @@ export class VideoplayerStack extends Stack {
       runtime: lambda.Runtime.NODEJS_22_X,
       memorySize: 512,
       timeout: Duration.seconds(30),
+      // Hard ceiling on concurrent invocations. Replaces the WAF /api rate-limit
+      // rule as the cost circuit-breaker: a single user needs only a handful, so
+      // even an unauthenticated flood (rejected at the auth layer) can't run up
+      // an unbounded Lambda bill.
+      reservedConcurrentExecutions: 10,
       depsLockFilePath: path.join(BACKEND, 'package-lock.json'),
       bundling,
       environment: {
@@ -194,7 +195,11 @@ function handler(event) {
       ...(props.domainName && certificate
         ? { domainNames: [props.domainName], certificate }
         : {}),
-      ...(props.webAclId ? { webAclId: props.webAclId } : {}),
+      // Edge-level country allowlist (free) in place of the WAF geo-match rule:
+      // foreign traffic is dropped before it reaches the origin. This is a
+      // traffic filter, not the access boundary — the HMAC auth cookie still
+      // gates /api/*. Add countries here when accessing from abroad.
+      geoRestriction: cloudfront.GeoRestriction.allowlist('JP'),
       defaultRootObject: 'index.html',
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(siteBucket),
