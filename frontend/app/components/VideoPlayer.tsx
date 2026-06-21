@@ -9,15 +9,31 @@ interface VideoPlayerProps {
   autoPlay?: boolean;
 }
 
+const MAX_NETWORK_RETRIES = 3;
+const MAX_MEDIA_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 1000;
+
 export default function VideoPlayer({ src, poster, autoPlay = true }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const networkRetryCountRef = useRef(0);
+  const mediaRetryCountRef = useRef(0);
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retriesExhausted, setRetriesExhausted] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+
+    const clearRetryTimeout = () => {
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+    };
 
     const setupVideo = () => {
       if (Hls.isSupported()) {
@@ -33,15 +49,34 @@ export default function VideoPlayer({ src, poster, autoPlay = true }: VideoPlaye
           if (data.fatal) {
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
-                setError('Network error occurred');
-                hls.startLoad();
+                if (networkRetryCountRef.current < MAX_NETWORK_RETRIES) {
+                  const attempt = networkRetryCountRef.current + 1;
+                  networkRetryCountRef.current = attempt;
+                  setError('Network error occurred');
+                  const delay = RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+                  clearRetryTimeout();
+                  retryTimeoutRef.current = setTimeout(() => {
+                    retryTimeoutRef.current = null;
+                    hls.startLoad();
+                  }, delay);
+                } else {
+                  setError('Network error occurred');
+                  setRetriesExhausted(true);
+                }
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
-                setError('Media error occurred');
-                hls.recoverMediaError();
+                if (mediaRetryCountRef.current < MAX_MEDIA_RETRIES) {
+                  mediaRetryCountRef.current += 1;
+                  setError('Media error occurred');
+                  hls.recoverMediaError();
+                } else {
+                  setError('Media error occurred');
+                  setRetriesExhausted(true);
+                }
                 break;
               default:
                 setError('An error occurred during playback');
+                setRetriesExhausted(true);
                 hls.destroy();
                 break;
             }
@@ -50,6 +85,8 @@ export default function VideoPlayer({ src, poster, autoPlay = true }: VideoPlaye
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           setError(null);
+          networkRetryCountRef.current = 0;
+          mediaRetryCountRef.current = 0;
           // Auto-play if enabled
           if (autoPlay) {
             video.play().catch((err) => {
@@ -57,6 +94,10 @@ export default function VideoPlayer({ src, poster, autoPlay = true }: VideoPlaye
               // Auto-play might fail due to browser policies, which is fine
             });
           }
+        });
+
+        hls.on(Hls.Events.FRAG_LOADED, () => {
+          networkRetryCountRef.current = 0;
         });
 
         hls.loadSource(src);
@@ -80,12 +121,21 @@ export default function VideoPlayer({ src, poster, autoPlay = true }: VideoPlaye
     setupVideo();
 
     return () => {
+      clearRetryTimeout();
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
     };
-  }, [src, autoPlay]);
+  }, [src, autoPlay, retryToken]);
+
+  const handleRetry = () => {
+    networkRetryCountRef.current = 0;
+    mediaRetryCountRef.current = 0;
+    setRetriesExhausted(false);
+    setError(null);
+    setRetryToken((token) => token + 1);
+  };
 
   const handleFullscreenToggle = async () => {
     const video = videoRef.current;
@@ -174,6 +224,14 @@ export default function VideoPlayer({ src, poster, autoPlay = true }: VideoPlaye
             <div className="text-white text-center p-4">
               <p className="text-lg font-semibold mb-2">Error</p>
               <p>{error}</p>
+              {retriesExhausted && (
+                <button
+                  onClick={handleRetry}
+                  className="mt-4 px-4 py-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-opacity"
+                >
+                  再試行
+                </button>
+              )}
             </div>
           </div>
         )}
