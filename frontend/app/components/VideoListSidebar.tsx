@@ -1,33 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { formatDuration } from '../utils/video-duration';
-import { useVideoDurations } from '../utils/useVideoDurations';
-import { apiFetch } from '../lib/api';
-
-interface Video {
-  id: string;
-  title: string;
-  hlsUrl: string;
-  status: 'converting' | 'ready' | 'failed';
-  thumbnailUrl?: string | null;
-  duration?: number | null;
-}
-
-interface VideoListResponse {
-  videos: Video[];
-  count: number;
-}
-
-interface PlaylistDetailResponse {
-  id: string;
-  name: string;
-  created_at: string;
-  updated_at: string;
-  videos: Video[];
-}
+import { useVideos } from '../utils/useVideos';
 
 interface VideoListSidebarProps {
   currentVideoId?: string;
@@ -35,79 +11,7 @@ interface VideoListSidebarProps {
 }
 
 export default function VideoListSidebar({ currentVideoId, playlistId }: VideoListSidebarProps) {
-  const [videos, setVideos] = useState<Video[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { durations, fetchDurations } = useVideoDurations();
-
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
-
-    if (playlistId) {
-      apiFetch(`/api/playlists/${playlistId}`)
-        .then(res => {
-          if (!res.ok) {
-            throw new Error('Failed to fetch playlist');
-          }
-          return res.json();
-        })
-        .then((data: PlaylistDetailResponse) => {
-          setVideos(data.videos);
-          setLoading(false);
-          fetchDurations(data.videos);
-        })
-        .catch(err => {
-          setError(err.message);
-          setLoading(false);
-        });
-      return;
-    }
-
-    let intervalId: NodeJS.Timeout | null = null;
-
-    const fetchVideos = () => {
-      apiFetch('/api/videos')
-        .then(res => {
-          if (!res.ok) {
-            throw new Error('Failed to fetch videos');
-          }
-          return res.json();
-        })
-        .then((data: VideoListResponse) => {
-          setVideos(data.videos);
-          setLoading(false);
-
-          // Fetch durations for ready videos
-          fetchDurations(data.videos);
-
-          // Clear any existing interval
-          if (intervalId) {
-            clearInterval(intervalId);
-            intervalId = null;
-          }
-
-          // Only set up interval if there are converting videos
-          const hasConvertingVideos = data.videos.some(v => v.status === 'converting');
-          if (hasConvertingVideos) {
-            intervalId = setInterval(() => {
-              fetchVideos();
-            }, 5000);
-          }
-        })
-        .catch(err => {
-          setError(err.message);
-          setLoading(false);
-        });
-    };
-
-    // Initial fetch
-    fetchVideos();
-
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [fetchDurations, playlistId]);
+  const { videos, loading, error, durations } = useVideos(playlistId);
 
   if (loading) {
     return (
