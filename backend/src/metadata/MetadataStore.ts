@@ -10,6 +10,12 @@ import { VideoMetadata, VideoStatus } from './VideoMetadata';
  */
 export interface MetadataStore {
   get(videoId: string): Promise<VideoMetadata | null>;
+  /**
+   * Batch lookup. Returns only the videos that exist — missing ids are
+   * silently dropped (no error, no placeholder). Order is not guaranteed to
+   * match `ids`; callers that need a specific order should re-order themselves.
+   */
+  getMany(ids: string[]): Promise<VideoMetadata[]>;
   list(): Promise<VideoMetadata[]>;
   save(metadata: VideoMetadata): Promise<void>;
   delete(videoId: string): Promise<boolean>;

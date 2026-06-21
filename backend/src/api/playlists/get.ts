@@ -17,12 +17,12 @@ export async function getPlaylist(
   if (playlist == null) {
     return null;
   }
-  const resolved = await Promise.all(
-    playlist.videoIds.map((videoId) => deps.metadata.get(videoId)),
-  );
-  const videos: VideoItem[] = resolved
-    .filter((v) => v != null)
-    .map((v) => toVideoItem(deps.config, v!));
+  const resolved = await deps.metadata.getMany(playlist.videoIds);
+  const byId = new Map(resolved.map((v) => [v.id, v]));
+  const videos: VideoItem[] = playlist.videoIds
+    .map((videoId) => byId.get(videoId))
+    .filter((v): v is NonNullable<typeof v> => v != null)
+    .map((v) => toVideoItem(deps.config, v));
   return {
     id: playlist.id,
     name: playlist.name,
