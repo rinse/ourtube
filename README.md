@@ -43,8 +43,8 @@ cd infra    && npm run synth
 シークレット指定が必要）。完全な手順は [docs/deploy.md](docs/deploy.md)。
 
 - 手動: `export APP_SECRET=... && bash scripts/deploy.sh`
-- 推奨（人間承認）: GitHub Actions の **Deploy** を `workflow_dispatch` でブランチ指定起動 →
-  `production` Environment のレビュアー承認 → OIDC で `cdk deploy`。
+- 推奨（自動）: `main` への push（PR マージ）で GitHub Actions の **Deploy** が自動起動し、
+  承認なしで `cdk deploy`。任意ブランチは `workflow_dispatch` で起動。
 
 事前に一度だけ: `cdk bootstrap` / Bedrock モデルアクセス有効化 /
 （Actions 経由なら）Secrets `AWS_DEPLOY_ROLE_ARN`,`APP_SECRET` と Variables `AWS_REGION`,`BEDROCK_MODEL_ID`。

@@ -29,7 +29,8 @@ fast development. See `docs/architecture.md` for the full picture.
   HLS playback is single-path: the API serves `index.m3u8` rewritten so segment lines
   are presigned S3/MinIO GET URLs; segments are fetched directly by the browser.
 - **IaC**: AWS CDK (`infra/`). **CI/CD**: GitHub Actions (`.github/workflows/`),
-  deploy is manual `workflow_dispatch` + `production` Environment approval + OIDC.
+  deploy runs automatically on push to `main` (also `workflow_dispatch`), via the
+  `production` Environment + OIDC, with no required-reviewer approval.
 
 ## Dependency wiring
 
