@@ -59,8 +59,8 @@ CloudFront Geo restriction / 認証 / Lambda URL の防御構成は [docs/securi
 | POST | `/api/login` / `/api/logout` | 認証（公開） |
 | GET | `/api/videos` | 一覧 |
 | GET | `/api/videos/:id` | メタデータ |
-| GET | `/api/videos/:id/index.m3u8` | HLS マニフェスト（書き換え済み） |
-| GET | `/api/videos/:id/:file` | セグメント（presigned へ 302）/ サムネ |
+| GET | `/api/videos/:id/index.m3u8` | HLS マニフェスト（無改変で配信、相対パス） |
+| GET | `/api/videos/:id/:file` | セグメント（リクエスト時に presign して 302）/ サムネ |
 | PUT | `/api/videos/:id` | タイトル更新 |
 | DELETE | `/api/videos/:id` | 削除 |
 | POST | `/api/uploads` | presigned PUT 発行（重複チェック） |
@@ -82,7 +82,7 @@ videoplayer/
 ├── backend/    # API + Conversion Lambda 共有コード（createApp 工場 + lambda/ アダプタ）
 ├── frontend/   # Next.js 静的 SPA
 ├── infra/      # AWS CDK
-├── docs/       # architecture / dynamodb-schema / local-dev
-├── scripts/    # dev.sh, local-env.sh
+├── docs/       # architecture / dynamodb-schema / local-dev / deploy / security / custom-domain
+├── scripts/    # dev.sh, local-env.sh, deploy.sh, cost-report.sh
 └── .github/workflows/  # ci.yml, deploy.yml
 ```

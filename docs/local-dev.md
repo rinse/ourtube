@@ -41,13 +41,13 @@ bash scripts/dev.sh
 1. `/upload` で小さい mp4 を選択 → ブラウザが SHA256 を計算（進捗表示）。
 2. presigned PUT で MinIO へ直接アップロード → `/complete` で ffmpeg 変換開始。
 3. 一覧（`/`）が 5 秒間隔で更新され `converting` → `ready` に。
-4. サムネ表示、クリックで `/videos?id=...` 再生（マニフェスト書き換え + presigned セグメント）。
+4. サムネ表示、クリックで `/videos?id=...` 再生（マニフェストは無改変、セグメントは都度 presigned URL へ 302）。
 5. アップロード時にタイトルサジェスト（LM Studio 起動時）。
 
 ## テスト
 
 ```bash
-cd backend && npm test          # metadata / 認証 / 重複排除 / マニフェスト書換
+cd backend && npm test          # metadata / 認証 / 重複排除 / マニフェスト配信・セグメント302
 cd backend && npm run typecheck
 cd frontend && NEXT_EXPORT=true npm run build   # 静的export検証
 cd infra && npm run synth                        # CDK 検証
@@ -74,5 +74,6 @@ cd infra && npm run synth                        # CDK 検証
   compose で `*`。`docker compose logs minio` を確認。
 - **変換が `failed`**: ffmpeg 未インストール、または入力が壊れている。バックエンド
   ログに ffmpeg のエラー末尾が出る。
-- **再生が始まらない**: `/api/videos/<id>/index.m3u8` を直接開き、セグメント行が
-  `http://localhost:9000/...` の presigned URL に書き換わっているか確認。
+- **再生が始まらない**: `/api/videos/<id>/index.m3u8` を直接開き、マニフェストが相対パスの
+  ままか確認。次に各セグメント行（`/api/videos/<id>/<segment>`）を開き、
+  `http://localhost:9000/...` の presigned URL に 302 リダイレクトされるか確認。

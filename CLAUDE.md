@@ -26,8 +26,9 @@ fast development. See `docs/architecture.md` for the full picture.
 - **Frontend**: Next.js static export (`output: 'export'`), client-rendered, calls
   same-origin `/api/*`. Detail page is `/videos?id=...` (no dynamic route, for static export).
 - **Delivery**: CloudFront fronts the SPA (S3+OAC) and proxies `/api/*` to the Lambda.
-  HLS playback is single-path: the API serves `index.m3u8` rewritten so segment lines
-  are presigned S3/MinIO GET URLs; segments are fetched directly by the browser.
+  HLS playback is single-path: the API serves `index.m3u8` verbatim (relative paths);
+  each segment request (`GET /api/videos/:id/:segment`) is 302-redirected to a
+  per-request presigned S3/MinIO URL.
 - **IaC**: AWS CDK (`infra/`). **CI/CD**: GitHub Actions (`.github/workflows/`),
   deploy runs automatically on push to `main` (also `workflow_dispatch`), via the
   `production` Environment + OIDC, with no required-reviewer approval.
