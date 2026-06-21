@@ -8,7 +8,30 @@ import { useVideos, type Video } from '../utils/useVideos';
 import { apiFetch } from '../lib/api';
 import DeleteVideoDialog from './DeleteVideoDialog';
 
-export default function VideoList() {
+export type SortOption = 'newest' | 'oldest' | 'title-asc';
+
+interface VideoListProps {
+  searchQuery?: string;
+  sortBy?: SortOption;
+}
+
+function getDisplayVideos(videos: Video[], searchQuery: string, sortBy: SortOption): Video[] {
+  const query = searchQuery.trim().toLowerCase();
+  const filtered = query
+    ? videos.filter(v => v.title.toLowerCase().includes(query))
+    : videos;
+
+  if (sortBy === 'oldest') {
+    return [...filtered].reverse();
+  }
+  if (sortBy === 'title-asc') {
+    return [...filtered].sort((a, b) => a.title.localeCompare(b.title, 'ja'));
+  }
+  // 'newest' (default): API already returns newest-first
+  return filtered;
+}
+
+export default function VideoList({ searchQuery = '', sortBy = 'newest' }: VideoListProps) {
   const { videos, loading, error, durations, removeVideo } = useVideos();
   const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; video: Video | null }>({ isOpen: false, video: null });
 
@@ -85,10 +108,30 @@ export default function VideoList() {
     );
   }
 
+  const displayVideos = getDisplayVideos(videos, searchQuery, sortBy);
+
+  if (displayVideos.length === 0) {
+    return (
+      <div className="grid grid-cols-1 gap-4">
+        <div className="col-span-full flex justify-center">
+          <div className="bg-white rounded-lg shadow-md p-6 text-center max-w-md">
+            <div className="text-gray-500">
+              <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
+              </svg>
+              <h2 className="text-xl font-semibold mb-2">該当する動画が見つかりません</h2>
+              <p className="text-sm">検索条件を変更して再度お試しください。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-        {videos.map((video) => {
+        {displayVideos.map((video) => {
         const isReady = video.status === 'ready';
         const isConverting = video.status === 'converting';
         
