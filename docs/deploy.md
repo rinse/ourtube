@@ -46,13 +46,15 @@ cd frontend && npm ci && NEXT_EXPORT=true npm run build   # out/ を生成
 cd infra    && npm ci && npx cdk deploy --require-approval never
 ```
 
-## 2. GitHub Actions 経由（推奨・人間承認）
+## 2. GitHub Actions 経由（推奨・自動デプロイ）
 
-1. リポジトリを push。
-2. Actions → **Deploy** → *Run workflow* → デプロイ対象ブランチを指定。
-3. `production` Environment のレビュアー承認 → OIDC で AWS に入り `cdk deploy`。
+1. **`main` に push（PR マージ含む）すると Deploy が自動起動し、承認なしでデプロイ**される。
+   任意のブランチを手動デプロイしたい場合は Actions → **Deploy** → *Run workflow*
+   → 対象ブランチを指定（`workflow_dispatch`）。
+2. OIDC で AWS に入り `cdk deploy`。`production` Environment は Secrets/Variables の
+   スコープとデプロイ履歴のために残しているが、レビュアー承認ルールはない。
 
-`.github/workflows/deploy.yml` が上記 1. と同じビルド順を自動実行する。
+`.github/workflows/deploy.yml` が上記 1.（ローカル）と同じビルド順を自動実行する。
 
 ## 3. デプロイ後
 

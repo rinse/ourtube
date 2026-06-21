@@ -1,9 +1,13 @@
 name: Deploy
 
-# Manual, human-approved deploy. Dispatch from the branch you want to deploy
-# (GitHub Actions "Use workflow from"); that branch is what gets checked out and
-# deployed. The `production` Environment's required-reviewer rule gates the run.
+# Auto-deploy. Runs on every push to `main` (e.g. a merged PR) and deploys
+# without manual approval. Can also be triggered manually via workflow_dispatch
+# from any branch (GitHub Actions "Use workflow from"). The `production`
+# Environment is kept for secret/variable scoping and deployment history; it no
+# longer has a required-reviewer rule.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -13,11 +17,12 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production # requires reviewer approval (configure in repo settings)
+    environment: production # scopes secrets/variables + deploy history (no approval gate)
     steps:
       - uses: actions/checkout@v6
-        # No `ref:` — checkout defaults to the dispatched branch (the one chosen
-        # in "Use workflow from"), so the launching branch is what gets deployed.
+        # No `ref:` — checkout defaults to the triggering ref: the pushed commit
+        # on `main` for push events, or the branch chosen in "Use workflow from"
+        # for a manual dispatch. Either way that ref is what gets deployed.
 
       - uses: actions/setup-node@v6
         with:
