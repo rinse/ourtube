@@ -30,4 +30,7 @@ new VideoplayerStack(app, 'VideoplayerStack', {
   certificateArn: process.env.CERTIFICATE_ARN,
   hostedZoneId: process.env.HOSTED_ZONE_ID,
   hostedZoneName: process.env.HOSTED_ZONE_NAME,
+  // Optional: set to receive CloudWatch Alarm notifications by email (SNS).
+  // Alarms are defined either way and visible in the console.
+  alarmEmail: process.env.ALARM_EMAIL,
 });
