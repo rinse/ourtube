@@ -1,32 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { formatDuration } from '../utils/video-duration';
-import { useVideoDurations } from '../utils/useVideoDurations';
+import { useVideos, type Video } from '../utils/useVideos';
 import { apiFetch } from '../lib/api';
 import DeleteVideoDialog from './DeleteVideoDialog';
 
-interface Video {
-  id: string;
-  title: string;
-  hlsUrl: string;
-  status: 'converting' | 'ready' | 'failed';
-  thumbnailUrl?: string | null;
-  duration?: number | null;
-}
-
-interface VideoListResponse {
-  videos: Video[];
-  count: number;
-}
-
 export default function VideoList() {
-  const [videos, setVideos] = useState<Video[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { durations, fetchDurations } = useVideoDurations();
+  const { videos, loading, error, durations, removeVideo } = useVideos();
   const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; video: Video | null }>({ isOpen: false, video: null });
 
   const handleDeleteVideo = async () => {
@@ -42,59 +25,13 @@ export default function VideoList() {
       }
 
       // Remove video from the list
-      setVideos(prev => prev.filter(v => v.id !== deleteDialog.video!.id));
+      removeVideo(deleteDialog.video.id);
       setDeleteDialog({ isOpen: false, video: null });
     } catch (error) {
       console.error('Error deleting video:', error);
       alert('Failed to delete video. Please try again.');
     }
   };
-
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null;
-
-    const fetchVideos = () => {
-      apiFetch('/api/videos')
-        .then(res => {
-          if (!res.ok) {
-            throw new Error('Failed to fetch videos');
-          }
-          return res.json();
-        })
-        .then((data: VideoListResponse) => {
-          setVideos(data.videos);
-          setLoading(false);
-          
-          // Fetch durations for ready videos
-          fetchDurations(data.videos);
-          
-          // Clear any existing interval
-          if (intervalId) {
-            clearInterval(intervalId);
-            intervalId = null;
-          }
-          
-          // Only set up interval if there are converting videos
-          const hasConvertingVideos = data.videos.some(v => v.status === 'converting');
-          if (hasConvertingVideos) {
-            intervalId = setInterval(() => {
-              fetchVideos();
-            }, 5000);
-          }
-        })
-        .catch(err => {
-          setError(err.message);
-          setLoading(false);
-        });
-    };
-
-    // Initial fetch
-    fetchVideos();
-
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [fetchDurations]);
 
   if (loading) {
     return (
