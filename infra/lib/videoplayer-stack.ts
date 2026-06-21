@@ -18,6 +18,10 @@ import {
   aws_certificatemanager as acm,
   aws_route53 as route53,
   aws_route53_targets as route53Targets,
+  aws_cloudwatch as cloudwatch,
+  aws_cloudwatch_actions as cloudwatchActions,
+  aws_sns as sns,
+  aws_sns_subscriptions as subscriptions,
 } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
@@ -32,6 +36,10 @@ export interface VideoplayerStackProps extends StackProps {
   certificateArn?: string;
   hostedZoneId?: string;
   hostedZoneName?: string;
+  // Optional: when set, an SNS topic is created and alarms email this address.
+  // Omitted by default so the stack still synths/deploys with no extra config —
+  // the alarms remain defined and visible in the CloudWatch console either way.
+  alarmEmail?: string;
 }
 
 const BACKEND = path.join(__dirname, '..', '..', 'backend');
@@ -163,6 +171,57 @@ export class VideoplayerStack extends Stack {
       },
       targets: [new targets.LambdaFunction(conversionFn)],
     });
+
+    // --- CloudWatch Alarms: error/cost visibility -----------------------------
+    // Today the only cost/error visibility is the manual scripts/cost-report.sh.
+    // These alarms make the failure/cost-protection conditions observable in the
+    // console without anyone having to remember to look. Notifications are
+    // optional (gated on `alarmEmail`) so the stack still synths/deploys with no
+    // extra config; the alarms themselves are unconditional.
+    let alarmTopic: sns.Topic | undefined;
+    if (props.alarmEmail) {
+      alarmTopic = new sns.Topic(this, 'AlarmTopic');
+      alarmTopic.addSubscription(new subscriptions.EmailSubscription(props.alarmEmail));
+    }
+    const alarmActions = alarmTopic ? [new cloudwatchActions.SnsAction(alarmTopic)] : [];
+
+    // API Lambda errors: any failed invocation (5xx-causing exceptions etc).
+    // Low traffic personal app -> even a couple of errors in 5 minutes is
+    // unusual and worth a look.
+    const apiErrorsAlarm = new cloudwatch.Alarm(this, 'ApiFnErrorsAlarm', {
+      metric: apiFn.metricErrors({ period: Duration.minutes(5) }),
+      threshold: 2,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      alarmDescription: 'API Lambda raised >=2 errors in 5 minutes.',
+    });
+    apiErrorsAlarm.addAlarmAction(...alarmActions);
+
+    // API Lambda throttles: hitting the reservedConcurrentExecutions=10 ceiling
+    // (the cost circuit-breaker against an unauthenticated flood) shows up here
+    // first. Any throttle at all is notable for a single-user app.
+    const apiThrottlesAlarm = new cloudwatch.Alarm(this, 'ApiFnThrottlesAlarm', {
+      metric: apiFn.metricThrottles({ period: Duration.minutes(5) }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      alarmDescription: 'API Lambda was throttled — likely hitting the reserved concurrency ceiling (flood or runaway traffic).',
+    });
+    apiThrottlesAlarm.addAlarmAction(...alarmActions);
+
+    // Conversion Lambda errors: MediaConvert completion (finalize) failing
+    // repeatedly would otherwise silently leave videos stuck in `converting`.
+    const conversionErrorsAlarm = new cloudwatch.Alarm(this, 'ConversionFnErrorsAlarm', {
+      metric: conversionFn.metricErrors({ period: Duration.minutes(15) }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      alarmDescription: 'Conversion Lambda (MediaConvert completion/finalize) raised an error.',
+    });
+    conversionErrorsAlarm.addAlarmAction(...alarmActions);
 
     // --- Static SPA bucket + CloudFront -------------------------------------
     const siteBucket = new s3.Bucket(this, 'SiteBucket', {
