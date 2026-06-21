@@ -1,13 +1,20 @@
 name: Deploy
 
-# Auto-deploy. Runs on every push to `main` (e.g. a merged PR) and deploys
-# without manual approval. Can also be triggered manually via workflow_dispatch
-# from any branch (GitHub Actions "Use workflow from"). The `production`
-# Environment is kept for secret/variable scoping and deployment history; it no
-# longer has a required-reviewer rule.
+# Auto-deploy with a safety gate. Runs on every push to `main` (e.g. a merged
+# PR). App-only changes (backend/frontend) deploy automatically via the
+# `production` Environment (no approval). infra/** and workflow changes are
+# routed through `production-infra`, which requires a human reviewer. Manual
+# `workflow_dispatch` always takes the approval path. See docs/deploy.md.
 on:
   push:
     branches: [main]
+    # Docs/CI-only pushes never deploy. paths-ignore skips a push only when
+    # *every* changed file matches; a push mixing docs with backend code still
+    # deploys. `.github/**` is intentionally NOT ignored — workflow changes are
+    # treated as infra and gated by the `detect` job below.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   workflow_dispatch:
 
 # 同一スタックへのデプロイを直列化する。cancel-in-progress は使わない —
@@ -22,9 +29,38 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  # Decide whether this deploy needs human approval. infra/** or workflow
+  # changes → approval (production-infra). Manual dispatch is always treated as
+  # infra (safe side): the diff base for paths-filter is ambiguous on dispatch,
+  # so we skip the filter there and force the approval path.
+  detect:
     runs-on: ubuntu-latest
-    environment: production # scopes secrets/variables + deploy history (no approval gate)
+    outputs:
+      infra: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.infra == 'true' }}
+    steps:
+      # paths-filter needs the repo checked out to diff against the pre-push
+      # commit on push events. Full history guarantees the merge-base is found.
+      - uses: actions/checkout@v6
+        if: github.event_name == 'push'
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'push'
+        with:
+          filters: |
+            infra:
+              - 'infra/**'
+              - '.github/workflows/**'
+
+  deploy:
+    needs: detect
+    runs-on: ubuntu-latest
+    # Switch Environment by detect output. `production` = no approval (auto app
+    # deploy); `production-infra` = required reviewer (infra/workflow + manual
+    # dispatch). Both must exist with the same secrets/variables — see docs.
+    environment:
+      name: ${{ needs.detect.outputs.infra == 'true' && 'production-infra' || 'production' }}
     steps:
       - uses: actions/checkout@v6
         # No `ref:` — checkout defaults to the triggering ref: the pushed commit
