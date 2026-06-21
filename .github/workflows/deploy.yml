@@ -10,6 +10,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# 同一スタックへのデプロイを直列化する。cancel-in-progress は使わない —
+# 進行中の CDK/CloudFormation デプロイを途中で打ち切るとスタックが
+# 中途半端な状態（*_IN_PROGRESS）のまま残ってしまうため。
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 permissions:
   id-token: write # OIDC for AWS
   contents: read

@@ -56,7 +56,30 @@ cd infra    && npm ci && npx cdk deploy --require-approval never
 
 `.github/workflows/deploy.yml` が上記 1.（ローカル）と同じビルド順を自動実行する。
 
-## 3. デプロイ後
+## 3. デプロイの直列化（concurrency）
+
+PR を短時間に連続マージすると、各マージが Deploy ワークフローをそれぞれ起動し、
+前のデプロイが CloudFormation スタック更新中（`*_IN_PROGRESS`）のうちに次が走って
+失敗することがある。これを避けるため `deploy.yml` には次の `concurrency` 設定がある:
+
+```yaml
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+```
+
+- 全ての Deploy run が同一グループ `deploy-production` を共有し、同じスタックへの
+  デプロイが同時に走らないよう直列化される。
+- `cancel-in-progress: false` のため、進行中のデプロイは最後まで完走し、後続の run は
+  キューされて待つ（進行中の CDK/CloudFormation 更新を途中キャンセルしない）。
+
+**既知の制限**: GitHub Actions の concurrency グループは「実行中 1 つ + 保留中 1 つ」
+までしか保持しない。保留中の run がある状態でさらに新しい run がトリガーされると、
+保留中の古い run は新しい run に置き換えられる（古い方はスキップ/キャンセルされる）。
+そのため、短時間に 3 件以上 push された場合に全コミットが個別にデプロイされるとは
+限らない。最終的に最新の `main` の内容はいずれ反映されるため、この挙動は許容している。
+
+## 4. デプロイ後
 
 - 出力 `SiteUrl`（CloudFront ドメイン）を開く。
 - 初回は `/login` で `APP_SECRET` を入力（httpOnly セッション Cookie が発行される）。
@@ -76,7 +99,7 @@ cd infra    && npm ci && npx cdk deploy --require-approval never
 > を指定した場合）のみ条件付きで出力される（`infra/lib/videoplayer-stack.ts` の
 > `CustomDomainUrl`）。未設定のデプロイでは出力されない。
 
-## 4. 既知の注意点 / 未検証
+## 5. 既知の注意点 / 未検証
 
 - **MediaConvert の master manifest 名**: 本構成は `videos/<id>/index.m3u8` になる前提
   （Destination を `…/index` にするテクニック）。実ジョブで名前が異なると再生が 404 になるが、
@@ -87,7 +110,7 @@ cd infra    && npm ci && npx cdk deploy --require-approval never
 - クラウド実機（MediaConvert/Bedrock/CloudFront/Function URL）はまだ未デプロイ・未検証。
   ローカル E2E（MinIO/DynamoDB Local/ffmpeg）は検証済み（[local-dev.md](./local-dev.md)）。
 
-## 5. 撤去
+## 6. 撤去
 
 ```bash
 cd infra && npx cdk destroy
