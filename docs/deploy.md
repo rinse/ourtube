@@ -25,7 +25,10 @@
    - GitHub OIDC プロバイダ + デプロイ用 IAM ロールを作成
    - リポジトリ Secrets: `AWS_DEPLOY_ROLE_ARN`, `APP_SECRET`
    - リポジトリ Variables: `AWS_REGION`, `BEDROCK_MODEL_ID`
-   - `production` Environment に必須レビュアーを設定（人間承認ゲート）
+   - **2 つの Environment を用意**（詳細は「3. デプロイの安全弁」）:
+     - `production`（必須レビュアーなし。アプリ変更の自動デプロイ用）
+     - `production-infra`（必須レビュアーあり。infra/ワークフロー変更・手動起動用）。
+       `production` と同じ Secrets / Variables を**複製**して持たせる。
 
 ## 1. 手動デプロイ（ローカルから）
 
@@ -48,15 +51,66 @@ cd infra    && npm ci && npx cdk deploy --require-approval never
 
 ## 2. GitHub Actions 経由（推奨・自動デプロイ）
 
-1. **`main` に push（PR マージ含む）すると Deploy が自動起動し、承認なしでデプロイ**される。
+1. **`main` に push（PR マージ含む）すると Deploy が起動する**。アプリ変更
+   （backend/frontend）は承認なしで自動デプロイされる。infra/ワークフロー変更や
+   手動起動には人間承認が入る（詳細は「3. デプロイの安全弁」）。
    任意のブランチを手動デプロイしたい場合は Actions → **Deploy** → *Run workflow*
    → 対象ブランチを指定（`workflow_dispatch`）。
-2. OIDC で AWS に入り `cdk deploy`。`production` Environment は Secrets/Variables の
-   スコープとデプロイ履歴のために残しているが、レビュアー承認ルールはない。
+2. OIDC で AWS に入り `cdk deploy`。Secrets/Variables は Environment にスコープ
+   され、デプロイ履歴も Environment 単位で残る。
 
 `.github/workflows/deploy.yml` が上記 1.（ローカル）と同じビルド順を自動実行する。
 
-## 3. デプロイの直列化（concurrency）
+## 3. デプロイの安全弁（承認ゲート）
+
+`main` への push で承認なしの本番デプロイが無条件に走るのを避けるため、`deploy.yml`
+には次の安全弁がある。**完全な手動承認には戻さない**（アプリ変更の自動デプロイ速度は維持）。
+
+### paths-ignore — docs/CI-only はデプロイしない
+
+`on.push.paths-ignore` に `'**.md'` と `'docs/**'` を指定している。これらだけの変更を
+含む push では Deploy ワークフロー自体が起動しない（no-op）。
+
+- paths-ignore は「変更ファイルが**全て**該当した場合のみ」push を無視する。
+  docs とアプリコードを混在させた push は通常どおりデプロイされる。
+- `.github/**` は paths-ignore に入れていない。ワークフロー変更を無視すると CI 変更が
+  反映されない不都合があるため、ワークフロー変更は infra 寄りの扱いとし、下記の
+  承認ゲートに任せている。
+
+### Environment 切替 — infra 変更時のみ承認を要求
+
+GitHub Actions の同一 Environment は「承認あり/なし」を式で切り替えられない（protection
+rule は Environment の属性）。そこで**実在する 2 つの Environment を式で切り替える**:
+
+- `production`（承認なし）— アプリ変更（backend/frontend）の自動デプロイ用。
+- `production-infra`（必須レビュア承認あり）— `infra/**` とワークフロー（`.github/workflows/**`）
+  変更時、および手動起動（`workflow_dispatch`）用。
+
+`detect` job が変更内容に `infra/**` / `.github/workflows/**` が含まれるか（`dorny/paths-filter`）
+を判定し、`deploy` job の `environment.name` を式で切り替える:
+
+```yaml
+environment:
+  name: ${{ needs.detect.outputs.infra == 'true' && 'production-infra' || 'production' }}
+```
+
+- **手動起動（`workflow_dispatch`）は常に承認必須**（`production-infra`）に倒している。
+  手動起動では paths-filter の diff 基準が曖昧なため、安全側に振っている。
+- paths-filter は push イベントで pre-push コミットとの diff を取るため、`detect` job は
+  push 時に checkout（`fetch-depth: 0`）してから判定する。
+
+### 手動セットアップ前提（重要）
+
+この安全弁は GitHub リポジトリ設定での手動作業を前提とする:
+
+- `production-infra` Environment を作成し、**必須レビュア**を設定する。
+- `production` と同じ Secrets（`APP_SECRET`, `AWS_DEPLOY_ROLE_ARN`）と
+  Variables（`AWS_REGION`, `BEDROCK_MODEL_ID`, `DOMAIN_NAME` など）を**複製**する。
+
+これを行うまで、infra/ワークフロー変更や手動起動のデプロイは**承認待ちで止まる**か、
+Secrets/Variables が引けず**失敗**する。
+
+## 4. デプロイの直列化（concurrency）
 
 PR を短時間に連続マージすると、各マージが Deploy ワークフローをそれぞれ起動し、
 前のデプロイが CloudFormation スタック更新中（`*_IN_PROGRESS`）のうちに次が走って
@@ -79,7 +133,7 @@ concurrency:
 そのため、短時間に 3 件以上 push された場合に全コミットが個別にデプロイされるとは
 限らない。最終的に最新の `main` の内容はいずれ反映されるため、この挙動は許容している。
 
-## 4. デプロイ後
+## 5. デプロイ後
 
 - 出力 `SiteUrl`（CloudFront ドメイン）を開く。
 - 初回は `/login` で `APP_SECRET` を入力（httpOnly セッション Cookie が発行される）。
@@ -99,7 +153,7 @@ concurrency:
 > を指定した場合）のみ条件付きで出力される（`infra/lib/videoplayer-stack.ts` の
 > `CustomDomainUrl`）。未設定のデプロイでは出力されない。
 
-## 5. 既知の注意点 / 未検証
+## 6. 既知の注意点 / 未検証
 
 - **MediaConvert の master manifest 名**: 本構成は `videos/<id>/index.m3u8` になる前提
   （Destination を `…/index` にするテクニック）。実ジョブで名前が異なると再生が 404 になるが、
@@ -110,7 +164,7 @@ concurrency:
 - クラウド実機（MediaConvert/Bedrock/CloudFront/Function URL）はまだ未デプロイ・未検証。
   ローカル E2E（MinIO/DynamoDB Local/ffmpeg）は検証済み（[local-dev.md](./local-dev.md)）。
 
-## 6. 撤去
+## 7. 撤去
 
 ```bash
 cd infra && npx cdk destroy
