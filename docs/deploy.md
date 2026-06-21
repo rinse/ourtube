@@ -72,6 +72,10 @@ cd infra    && npm ci && npx cdk deploy --require-approval never
 | `SiteBucketName` | 静的 SPA バケット |
 | `TableName` | DynamoDB テーブル |
 
+> `CustomDomainUrl` はカスタムドメイン設定時（`domainName`/`hostedZoneId`/`hostedZoneName`
+> を指定した場合）のみ条件付きで出力される（`infra/lib/videoplayer-stack.ts` の
+> `CustomDomainUrl`）。未設定のデプロイでは出力されない。
+
 ## 4. 既知の注意点 / 未検証
 
 - **MediaConvert の master manifest 名**: 本構成は `videos/<id>/index.m3u8` になる前提
