@@ -2,6 +2,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
   GetCommand,
+  BatchGetCommand,
   PutCommand,
   DeleteCommand,
   UpdateCommand,
@@ -21,6 +22,8 @@ import { VideoMetadata, VideoStatus, validateVideoMetadata } from './VideoMetada
  */
 const GSI1_NAME = 'GSI1';
 const LIST_PARTITION = 'VIDEOS';
+/** Hard limit imposed by DynamoDB's BatchGetItem (per call, across all tables). */
+const BATCH_GET_LIMIT = 100;
 
 function pk(id: string): string {
   return `VIDEO#${id}`;
@@ -71,6 +74,39 @@ export class DynamoMetadataStore implements MetadataStore {
       return null;
     }
     return validateVideoMetadata(res.Item);
+  }
+
+  async getMany(ids: string[]): Promise<VideoMetadata[]> {
+    // BatchGetItem rejects duplicate keys within a single request, and a
+    // dedicated request for the same id twice would be wasted work anyway.
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.length === 0) {
+      return [];
+    }
+    const results: VideoMetadata[] = [];
+    for (let i = 0; i < uniqueIds.length; i += BATCH_GET_LIMIT) {
+      const chunk = uniqueIds.slice(i, i + BATCH_GET_LIMIT);
+      results.push(...await this.batchGetChunk(chunk));
+    }
+    return results;
+  }
+
+  /** Fetches at most BATCH_GET_LIMIT keys, retrying any UnprocessedKeys. */
+  private async batchGetChunk(ids: string[]): Promise<VideoMetadata[]> {
+    let keys = ids.map((id) => ({ PK: pk(id), SK: pk(id) }));
+    const items: Record<string, unknown>[] = [];
+    while (keys.length > 0) {
+      const res = await this.doc.send(new BatchGetCommand({
+        RequestItems: {
+          [this.tableName]: { Keys: keys },
+        },
+      }));
+      items.push(...(res.Responses?.[this.tableName] ?? []));
+      keys = (res.UnprocessedKeys?.[this.tableName]?.Keys ?? []) as { PK: string; SK: string }[];
+    }
+    return items
+      .map((item) => validateVideoMetadata(item))
+      .filter((v): v is VideoMetadata => v !== null);
   }
 
   async list(): Promise<VideoMetadata[]> {

@@ -13,6 +13,12 @@ export class InMemoryMetadataStore implements MetadataStore {
     return this.items.get(videoId) ?? null;
   }
 
+  async getMany(ids: string[]): Promise<VideoMetadata[]> {
+    return ids
+      .map((id) => this.items.get(id))
+      .filter((v): v is VideoMetadata => v != null);
+  }
+
   async list(): Promise<VideoMetadata[]> {
     return [...this.items.values()].sort((a, b) =>
       b.created_at.localeCompare(a.created_at));
