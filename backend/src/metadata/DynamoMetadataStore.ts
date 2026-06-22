@@ -150,6 +150,10 @@ export class DynamoMetadataStore implements MetadataStore {
     return this.update(videoId, 'SET has_thumbnail = :h', { ':h': hasThumbnail });
   }
 
+  async updateConverterJobId(videoId: string, jobId: string): Promise<boolean> {
+    return this.update(videoId, 'SET converter_job_id = :j', { ':j': jobId });
+  }
+
   private async update(
     videoId: string,
     updateExpression: string,

@@ -22,4 +22,5 @@ export interface MetadataStore {
   updateTitle(videoId: string, title: string): Promise<boolean>;
   updateStatus(videoId: string, status: VideoStatus): Promise<boolean>;
   updateThumbnail(videoId: string, hasThumbnail: boolean): Promise<boolean>;
+  updateConverterJobId(videoId: string, jobId: string): Promise<boolean>;
 }

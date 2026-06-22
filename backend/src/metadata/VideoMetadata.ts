@@ -22,13 +22,18 @@ export type VideoStatus = t.TypeOf<typeof VideoStatusCodec>;
  * `has_thumbnail` is a native boolean — unlike the old SQLite-backed store there
  * is no 0/1 coercion, because DynamoDB DocumentClient round-trips booleans.
  */
-export const VideoMetadataCodec = t.type({
-  id: t.string,
-  title: t.string,
-  status: VideoStatusCodec,
-  created_at: t.string,
-  has_thumbnail: t.boolean,
-});
+export const VideoMetadataCodec = t.intersection([
+  t.type({
+    id: t.string,
+    title: t.string,
+    status: VideoStatusCodec,
+    created_at: t.string,
+    has_thumbnail: t.boolean,
+  }),
+  t.partial({
+    converter_job_id: t.string,
+  }),
+]);
 export type VideoMetadata = t.TypeOf<typeof VideoMetadataCodec>;
 
 export function validateVideoMetadata(data: unknown): VideoMetadata | null {

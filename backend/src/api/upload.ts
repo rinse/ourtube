@@ -76,7 +76,10 @@ export async function completeUpload(
     return false;
   }
   if (metadata.status === 'converting') {
-    await deps.converter.startConversion(videoId);
+    const { jobId } = await deps.converter.startConversion(videoId);
+    if (jobId) {
+      await deps.metadata.updateConverterJobId(videoId, jobId);
+    }
   }
   return true;
 }

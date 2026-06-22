@@ -28,6 +28,7 @@ export const VideoItemCodec = t.intersection([
   }),
   t.partial({
     thumbnailUrl: t.string,
+    created_at: t.string,
   }),
 ]);
 export type VideoItem = t.TypeOf<typeof VideoItemCodec>;
@@ -52,6 +53,7 @@ export const VideoInfoResponseCodec = t.intersection([
   }),
   t.partial({
     thumbnailUrl: t.string,
+    created_at: t.string,
   }),
 ]);
 export type VideoInfoResponse = t.TypeOf<typeof VideoInfoResponseCodec>;

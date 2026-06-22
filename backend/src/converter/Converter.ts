@@ -8,5 +8,10 @@
  *   (see src/conversion/finalize.ts).
  */
 export interface Converter {
-  startConversion(videoId: string): Promise<void>;
+  startConversion(videoId: string): Promise<ConversionResult>;
+  cancelJob(jobId: string): Promise<void>;
 }
+
+export type ConversionResult = {
+  jobId?: string;
+};

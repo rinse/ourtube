@@ -16,7 +16,11 @@ export async function finalizeConversion(
   // already in a terminal state, treat this as a no-op rather than risk
   // re-deriving (and flipping) fields like has_thumbnail.
   const existing = await deps.metadata.get(videoId);
-  if (existing && (existing.status === 'ready' || existing.status === 'failed')) {
+  if (!existing) {
+    console.log(`[${videoId}] finalizeConversion: record not found (deleted?), skipping`);
+    return;
+  }
+  if (existing.status === 'ready' || existing.status === 'failed') {
     console.log(`[${videoId}] finalizeConversion: already ${existing.status}, skipping duplicate event`);
     return;
   }

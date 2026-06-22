@@ -16,6 +16,7 @@ export function toVideoItem(_config: AppConfig, video: VideoMetadata): VideoItem
     id: video.id,
     title: video.title,
     status: video.status,
+    created_at: video.created_at,
     hlsUrl: `/api/videos/${video.id}/index.m3u8`,
     thumbnailUrl: video.has_thumbnail ? `/api/videos/${video.id}/${THUMBNAIL_FILENAME}` : undefined,
   };

@@ -97,4 +97,14 @@ describe('finalizeConversion', () => {
     await finalizeConversion({ storage, metadata }, ID, true);
     expect((await metadata.get(ID))?.status).toBe('failed');
   });
+
+  it('is a no-op when the record has been deleted (cancel-then-delete flow)', async () => {
+    const metadata = new InMemoryMetadataStore();
+    const storage = storageWith();
+
+    // Record was deleted before the completion event arrived.
+    await finalizeConversion({ storage, metadata }, ID, true);
+
+    expect(await metadata.get(ID)).toBeNull();
+  });
 });

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { promisify } from 'util';
-import { Converter } from './Converter';
+import { Converter, ConversionResult } from './Converter';
 import { VideoStorage } from '../storage/VideoStorage';
 import { MetadataStore } from '../metadata/MetadataStore';
 import { convertVideoToHLS, generateThumbnail } from '../media/ffmpeg';
@@ -20,16 +20,17 @@ export class LocalFfmpegConverter implements Converter {
     private readonly tmpDir: string,
   ) {}
 
-  async startConversion(videoId: string): Promise<void> {
-    // Kick off the long-running ffmpeg work in the background and resolve
-    // immediately, mirroring MediaConvert's "submit and return" semantics so the
-    // API route can always await startConversion. Safe here because the local
-    // converter only runs inside the long-lived dev server (never a Lambda).
+  async startConversion(videoId: string): Promise<ConversionResult> {
     setImmediate(() => {
       this.process(videoId).catch((error) => {
         console.error(`[${videoId}] background conversion crashed:`, error);
       });
     });
+    return {};
+  }
+
+  async cancelJob(_jobId: string): Promise<void> {
+    // Local converter has no external job to cancel.
   }
 
   private async process(videoId: string): Promise<void> {
