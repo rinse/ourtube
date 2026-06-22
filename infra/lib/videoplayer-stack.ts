@@ -172,6 +172,32 @@ export class VideoplayerStack extends Stack {
       targets: [new targets.LambdaFunction(conversionFn)],
     });
 
+    // --- Reconcile Lambda (stuck-converting sweep) ----------------------------
+    const reconcileFn = new nodejs.NodejsFunction(this, 'ReconcileFn', {
+      entry: path.join(BACKEND, 'src', 'lambda', 'reconcile.ts'),
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_22_X,
+      memorySize: 256,
+      timeout: Duration.seconds(60),
+      depsLockFilePath: path.join(BACKEND, 'package-lock.json'),
+      bundling,
+      environment: {
+        S3_BUCKET_NAME: storageBucket.bucketName,
+        DYNAMODB_TABLE: table.tableName,
+        CONVERTER: 'mediaconvert',
+        MEDIACONVERT_ROLE_ARN: mediaConvertRole.roleArn,
+        GENAI_PROVIDER: 'bedrock',
+        BEDROCK_MODEL_ID: props.bedrockModelId,
+        APP_SECRET: props.appSecret,
+      },
+    });
+    table.grantReadWriteData(reconcileFn);
+
+    new events.Rule(this, 'ReconcileSchedule', {
+      schedule: events.Schedule.rate(Duration.hours(1)),
+      targets: [new targets.LambdaFunction(reconcileFn)],
+    });
+
     // --- CloudWatch Alarms: error/cost visibility -----------------------------
     // Today the only cost/error visibility is the manual scripts/cost-report.sh.
     // These alarms make the failure/cost-protection conditions observable in the
@@ -222,6 +248,18 @@ export class VideoplayerStack extends Stack {
       alarmDescription: 'Conversion Lambda (MediaConvert completion/finalize) raised an error.',
     });
     conversionErrorsAlarm.addAlarmAction(...alarmActions);
+
+    // Reconcile Lambda errors: the sweep itself failing would leave stuck records
+    // unrecovered — the same blind spot the sweep is designed to close.
+    const reconcileErrorsAlarm = new cloudwatch.Alarm(this, 'ReconcileFnErrorsAlarm', {
+      metric: reconcileFn.metricErrors({ period: Duration.hours(1) }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      alarmDescription: 'Reconcile Lambda (stuck-converting sweep) raised an error.',
+    });
+    reconcileErrorsAlarm.addAlarmAction(...alarmActions);
 
     // --- Static SPA bucket + CloudFront -------------------------------------
     const siteBucket = new s3.Bucket(this, 'SiteBucket', {
