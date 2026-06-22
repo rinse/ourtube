@@ -1,5 +1,6 @@
 import { MetadataStore } from '../metadata/MetadataStore';
 import { VideoStorage } from '../storage/VideoStorage';
+import { parseHlsManifestDuration } from '../media/ffmpeg';
 
 /**
  * Finalize a MediaConvert job: normalize the thumbnail name, flip the metadata
@@ -49,6 +50,17 @@ export async function finalizeConversion(
     console.error(`[${videoId}] thumbnail normalization failed:`, error);
   }
   await deps.metadata.updateThumbnail(videoId, hasThumbnail);
+
+  try {
+    const manifest = await deps.storage.getText(videoId, 'index.m3u8');
+    const duration = parseHlsManifestDuration(manifest);
+    if (duration !== undefined) {
+      await deps.metadata.updateDuration(videoId, duration);
+    }
+  } catch (error) {
+    console.error(`[${videoId}] duration extraction failed:`, error);
+  }
+
   await deps.metadata.updateStatus(videoId, 'ready');
   await safeDeleteUpload(deps, videoId);
   console.log(`[${videoId}] conversion finalized (thumbnail=${hasThumbnail})`);

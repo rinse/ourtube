@@ -126,7 +126,12 @@ export function createApp(deps: Dependencies): Express {
             return;
           case 'stream':
             res.setHeader('Content-Type', file.mime);
-            res.setHeader('Cache-Control', 'public, max-age=3600');
+            // thumbnail.jpg is content-addressed (immutable per video id) so a
+            // long-lived, immutable Cache-Control is safe — both for the
+            // browser and for the edge-cached CloudFront behavior dedicated to
+            // this path (infra/lib/videoplayer-stack.ts), which lets repeat
+            // list-page visits skip the API Lambda entirely (issue #65).
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
             file.stream.pipe(res);
             return;
         }

@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../lib/api';
-import { useVideoDurations } from './useVideoDurations';
 
 export interface Video {
   id: string;
@@ -44,7 +43,14 @@ export function useVideos(playlistId?: string) {
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { durations, fetchDurations } = useVideoDurations();
+
+  // Duration comes from the API response (computed at conversion-finalize
+  // time and stored in metadata) rather than fetched per-video from the
+  // manifest, so opening the list never bursts per-video requests.
+  const durations = useMemo(
+    () => Object.fromEntries(videos.map(v => [v.id, v.duration ?? null])),
+    [videos],
+  );
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const delayRef = useRef(BASE_POLL_DELAY_MS);
@@ -81,7 +87,6 @@ export function useVideos(playlistId?: string) {
           videosRef.current = data.videos;
           setVideos(data.videos);
           setLoading(false);
-          fetchDurations(data.videos);
         })
         .catch(err => {
           if (cancelled) return;
@@ -108,9 +113,6 @@ export function useVideos(playlistId?: string) {
           videosRef.current = data.videos;
           setVideos(data.videos);
           setLoading(false);
-
-          // Fetch durations for ready videos
-          fetchDurations(data.videos);
 
           const convertingIds = data.videos
             .filter(v => v.status === 'converting')
@@ -152,7 +154,7 @@ export function useVideos(playlistId?: string) {
         timeoutRef.current = null;
       }
     };
-  }, [fetchDurations, playlistId]);
+  }, [playlistId]);
 
   return { videos, loading, error, durations, removeVideo };
 }

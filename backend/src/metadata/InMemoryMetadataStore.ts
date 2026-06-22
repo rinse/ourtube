@@ -48,6 +48,10 @@ export class InMemoryMetadataStore implements MetadataStore {
     return this.patch(videoId, (m) => { m.converter_job_id = jobId; });
   }
 
+  async updateDuration(videoId: string, durationSeconds: number): Promise<boolean> {
+    return this.patch(videoId, (m) => { m.duration = durationSeconds; });
+  }
+
   private patch(videoId: string, mutate: (m: VideoMetadata) => void): boolean {
     const existing = this.items.get(videoId);
     if (!existing) {

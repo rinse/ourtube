@@ -23,4 +23,6 @@ export interface MetadataStore {
   updateStatus(videoId: string, status: VideoStatus): Promise<boolean>;
   updateThumbnail(videoId: string, hasThumbnail: boolean): Promise<boolean>;
   updateConverterJobId(videoId: string, jobId: string): Promise<boolean>;
+  /** Duration in seconds, derived from the generated HLS manifest at finalize time. */
+  updateDuration(videoId: string, durationSeconds: number): Promise<boolean>;
 }
