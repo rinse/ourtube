@@ -135,7 +135,9 @@ export default function VideoList({ searchQuery = '', sortBy = 'newest' }: Video
         const isReady = video.status === 'ready';
         const isConverting = video.status === 'converting';
         
-        return isReady ? (
+        const isClickable = isReady || isConverting;
+
+        return isClickable ? (
           <Link
             key={video.id}
             href={`/videos?id=${video.id}`}

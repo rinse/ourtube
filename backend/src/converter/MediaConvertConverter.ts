@@ -1,9 +1,10 @@
 import {
   MediaConvertClient,
   CreateJobCommand,
+  CancelJobCommand,
   type CreateJobCommandInput,
 } from '@aws-sdk/client-mediaconvert';
-import { Converter } from './Converter';
+import { Converter, ConversionResult } from './Converter';
 
 export type MediaConvertConverterConfig = {
   awsRegion: string;
@@ -34,7 +35,7 @@ export class MediaConvertConverter implements Converter {
     });
   }
 
-  async startConversion(videoId: string): Promise<void> {
+  async startConversion(videoId: string): Promise<ConversionResult> {
     const input = `s3://${this.cfg.bucketName}/${this.cfg.uploadsPrefix}${videoId}`;
     const prefix = `s3://${this.cfg.bucketName}/${this.cfg.videosPrefix}${videoId}/`;
     // Destination basenames decide output filenames: an HLS destination ending
@@ -117,6 +118,25 @@ export class MediaConvertConverter implements Converter {
     };
 
     const res = await this.client.send(new CreateJobCommand(params));
-    console.log(`[${videoId}] MediaConvert job submitted: ${res.Job?.Id}`);
+    const jobId = res.Job?.Id;
+    console.log(`[${videoId}] MediaConvert job submitted: ${jobId}`);
+    return { jobId };
+  }
+
+  async cancelJob(jobId: string): Promise<void> {
+    try {
+      await this.client.send(new CancelJobCommand({ Id: jobId }));
+      console.log(`MediaConvert job ${jobId} cancelled`);
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'NotFoundException') {
+        console.log(`MediaConvert job ${jobId} not found (already completed or expired)`);
+        return;
+      }
+      if (error instanceof Error && error.name === 'ConflictException') {
+        console.log(`MediaConvert job ${jobId} already in terminal state`);
+        return;
+      }
+      throw error;
+    }
   }
 }

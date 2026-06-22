@@ -11,7 +11,9 @@ function fakeConverter(): Converter & { calls: string[] } {
     calls: [],
     async startConversion(videoId: string) {
       this.calls.push(videoId);
+      return {};
     },
+    async cancelJob() {},
   };
 }
 
