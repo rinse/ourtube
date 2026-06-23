@@ -252,6 +252,11 @@ function handler(event) {
     // HMAC is still validated at the Lambda (no auth logic duplicated at edge).
     // Public endpoints (login mints the cookie; logout needs no session) pass
     // through unconditionally.
+    //
+    // Cookie absence means "no credentials presented" → 401 Unauthorized, not
+    // 403 Forbidden (which is "authenticated but not allowed"). This matches the
+    // Lambda's own auth.guard (401) so the frontend's apiFetch sees a single,
+    // consistent unauthenticated status and redirects to /login on it.
     const apiAuthGate = new cloudfront.Function(this, 'ApiAuthGate', {
       code: cloudfront.FunctionCode.fromInline(`
 function handler(event) {
@@ -264,10 +269,10 @@ function handler(event) {
     return req;
   }
   return {
-    statusCode: 403,
-    statusDescription: 'Forbidden',
+    statusCode: 401,
+    statusDescription: 'Unauthorized',
     headers: { 'content-type': { value: 'text/plain' } },
-    body: 'Forbidden'
+    body: 'Unauthorized'
   };
 }`),
     });
