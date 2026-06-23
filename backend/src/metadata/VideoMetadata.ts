@@ -32,6 +32,7 @@ export const VideoMetadataCodec = t.intersection([
   }),
   t.partial({
     converter_job_id: t.string,
+    duration: t.number,
   }),
 ]);
 export type VideoMetadata = t.TypeOf<typeof VideoMetadataCodec>;

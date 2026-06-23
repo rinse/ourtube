@@ -4,7 +4,7 @@ import { promisify } from 'util';
 import { Converter, ConversionResult } from './Converter';
 import { VideoStorage } from '../storage/VideoStorage';
 import { MetadataStore } from '../metadata/MetadataStore';
-import { convertVideoToHLS, generateThumbnail } from '../media/ffmpeg';
+import { convertVideoToHLS, generateThumbnail, parseHlsManifestDuration } from '../media/ffmpeg';
 
 const fsMkdir = promisify(fs.mkdir);
 const fsRm = promisify(fs.rm);
@@ -53,6 +53,17 @@ export class LocalFfmpegConverter implements Converter {
 
       await this.deps.storage.uploadVideoDir(videoId, outDir);
       await this.deps.metadata.updateThumbnail(videoId, hasThumbnail);
+
+      try {
+        const manifest = await fs.promises.readFile(path.join(outDir, 'index.m3u8'), 'utf-8');
+        const duration = parseHlsManifestDuration(manifest);
+        if (duration !== undefined) {
+          await this.deps.metadata.updateDuration(videoId, duration);
+        }
+      } catch (error) {
+        console.error(`[${videoId}] duration extraction failed:`, error);
+      }
+
       await this.deps.metadata.updateStatus(videoId, 'ready');
       console.log(`[${videoId}] local conversion complete (thumbnail=${hasThumbnail})`);
     } catch (error) {

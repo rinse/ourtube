@@ -28,6 +28,7 @@
 | `status` | S | `converting` \| `ready` \| `failed`（`pending` は使わない） |
 | `created_at` | S | ISO8601 |
 | `has_thumbnail` | BOOL | サムネ有無（ネイティブ boolean） |
+| `duration` | N | 再生時間（秒）。変換完了（finalize）時に生成済み `index.m3u8` の `#EXTINF` 合計から算出。`converting` 中や算出不能時は属性自体が存在しない |
 
 ## アクセスパターン → 操作
 

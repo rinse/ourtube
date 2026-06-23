@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildHlsCodecArgs } from './ffmpeg';
+import { buildHlsCodecArgs, parseHlsManifestDuration } from './ffmpeg';
 
 describe('buildHlsCodecArgs', () => {
   it('copies both streams for an H.264 + AAC source', () => {
@@ -28,5 +28,25 @@ describe('buildHlsCodecArgs', () => {
 
   it('is case-insensitive for codec names', () => {
     expect(buildHlsCodecArgs('H264', 'AAC')).toEqual(['-c:v', 'copy', '-c:a', 'copy']);
+  });
+});
+
+describe('parseHlsManifestDuration', () => {
+  it('sums #EXTINF durations across segments', () => {
+    const manifest = [
+      '#EXTM3U',
+      '#EXT-X-VERSION:3',
+      '#EXTINF:10.0,',
+      'index_hls_00001.ts',
+      '#EXTINF:7.5,',
+      'index_hls_00002.ts',
+      '#EXT-X-ENDLIST',
+    ].join('\n');
+    expect(parseHlsManifestDuration(manifest)).toBe(17.5);
+  });
+
+  it('returns undefined for a manifest with no segments', () => {
+    const manifest = '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-ENDLIST';
+    expect(parseHlsManifestDuration(manifest)).toBeUndefined();
   });
 });

@@ -176,6 +176,22 @@ function captureThumbnailAt(sourcePath: string, thumbnailPath: string, seek: str
   });
 }
 
+/**
+ * Sum `#EXTINF` durations from an HLS manifest. Returns `undefined` rather
+ * than `0` when the manifest has no segments, so callers can skip storing a
+ * misleading duration instead of persisting zero.
+ */
+export function parseHlsManifestDuration(manifestText: string): number | undefined {
+  let total = 0;
+  for (const line of manifestText.split('\n')) {
+    const match = line.match(/^#EXTINF:(\d+(?:\.\d+)?),/);
+    if (match) {
+      total += parseFloat(match[1]);
+    }
+  }
+  return total > 0 ? total : undefined;
+}
+
 export async function generateThumbnail(sourcePath: string, targetDir: string): Promise<void> {
   const thumbnailPath = path.join(targetDir, THUMBNAIL_FILENAME);
   for (const seek of THUMBNAIL_SEEK_OFFSETS) {

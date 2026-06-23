@@ -40,6 +40,7 @@ function toItem(m: VideoMetadata): Record<string, unknown> {
     status: m.status,
     created_at: m.created_at,
     has_thumbnail: m.has_thumbnail,
+    duration: m.duration,
   };
 }
 
@@ -152,6 +153,10 @@ export class DynamoMetadataStore implements MetadataStore {
 
   async updateConverterJobId(videoId: string, jobId: string): Promise<boolean> {
     return this.update(videoId, 'SET converter_job_id = :j', { ':j': jobId });
+  }
+
+  async updateDuration(videoId: string, durationSeconds: number): Promise<boolean> {
+    return this.update(videoId, 'SET duration = :d', { ':d': durationSeconds });
   }
 
   private async update(

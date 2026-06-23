@@ -296,6 +296,43 @@ function handler(event) {
         }],
       },
       additionalBehaviors: {
+        // Thumbnails are effectively immutable (content-addressed video id +
+        // fixed filename), so this gets its own cache-enabled behavior to take
+        // them off the same Lambda concurrency budget the list page's burst
+        // (~60 thumbnails) would otherwise exhaust (issue #65). The auth gate
+        // (CloudFront Function) still runs on every request — cache or
+        // not — so an unauthenticated viewer is rejected before the cache is
+        // even consulted; only the *cache key* excludes the cookie (a custom
+        // CachePolicy can't vary on it anyway), so one edge-cached copy serves
+        // every request that passes the gate. On a cache MISS the cookie is
+        // still forwarded to the origin (originRequestPolicy below) so the
+        // Lambda's own session check still applies.
+        //
+        // This intentionally serves thumbnails from a path that is cacheable
+        // without per-viewer variation — a deliberate, narrower exception to
+        // the no-edge-caching default for /api/*, scoped to a single
+        // low-sensitivity, content-addressed resource.
+        'api/videos/*/thumbnail.jpg': {
+          origin: origins.FunctionUrlOrigin.withOriginAccessControl(apiUrl),
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+          cachePolicy: new cloudfront.CachePolicy(this, 'ThumbnailCachePolicy', {
+            cookieBehavior: cloudfront.CacheCookieBehavior.none(),
+            headerBehavior: cloudfront.CacheHeaderBehavior.none(),
+            queryStringBehavior: cloudfront.CacheQueryStringBehavior.none(),
+            // The origin sends `Cache-Control: public, max-age=3600`
+            // (backend/src/app.ts); CloudFront honors that within these
+            // bounds, so defaultTtl only applies if that header is absent.
+            minTtl: Duration.seconds(0),
+            defaultTtl: Duration.hours(1),
+            maxTtl: Duration.days(1),
+          }),
+          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+          functionAssociations: [{
+            function: apiAuthGate,
+            eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+          }],
+        },
         'api/*': {
           // OAC origin: CloudFront signs (SigV4) every request to the Function
           // URL and CDK auto-emits the Lambda invoke permission scoped to this

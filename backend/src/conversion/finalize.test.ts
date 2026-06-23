@@ -5,12 +5,20 @@ import { VideoStorage } from '../storage/VideoStorage';
 
 const ID = 'a'.repeat(64);
 
+const MANIFEST = `#EXTM3U
+#EXT-X-VERSION:3
+#EXTINF:10.0,
+index_hls_00001.ts
+#EXTINF:5.0,
+index_hls_00002.ts
+#EXT-X-ENDLIST`;
+
 function storageWith(overrides: Partial<VideoStorage> = {}): VideoStorage {
   return {
     uploadKey: (id) => `uploads/${id}`,
     presignUpload: async () => 'put-url',
     getFile: async () => { throw new Error('no'); },
-    getText: async () => '',
+    getText: async () => MANIFEST,
     presignGetFile: async (id, file) => `https://s3.test/videos/${id}/${file}?sig=abc`,
     existsFile: async () => true,
     exists: async () => true,
@@ -39,6 +47,26 @@ describe('finalizeConversion', () => {
     const after = await metadata.get(ID);
     expect(after?.status).toBe('ready');
     expect(after?.has_thumbnail).toBe(true);
+  });
+
+  it('stores duration parsed from the generated manifest', async () => {
+    const metadata = await convertingVideo();
+    const storage = storageWith();
+
+    await finalizeConversion({ storage, metadata }, ID, true);
+
+    const after = await metadata.get(ID);
+    expect(after?.duration).toBe(15);
+  });
+
+  it('leaves duration unset when the manifest has no segments', async () => {
+    const metadata = await convertingVideo();
+    const storage = storageWith({ getText: async () => '#EXTM3U\n#EXT-X-ENDLIST' });
+
+    await finalizeConversion({ storage, metadata }, ID, true);
+
+    const after = await metadata.get(ID);
+    expect(after?.duration).toBeUndefined();
   });
 
   it('marks failed when the manifest is missing', async () => {
