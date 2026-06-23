@@ -14,7 +14,7 @@ WAFv2 は web ACL の基本料金だけで $5/月、ルール込みで実質 ~$1
             │ TLS1.2_2021 / HTTPS 強制                   │
             │ default → S3(SPA, OAC)                     │
             │ api/*  → CloudFront Function(ApiAuthGate)  │
-            │          → Cookie 不在は 403（無料）        │
+            │          → Cookie 不在は 401（無料）        │
             │          → Lambda URL(OAC, SigV4)          │
             └──────────────┬───────────────────────────┘
                            ▼  AuthType=AWS_IAM（直叩き不可）
@@ -32,11 +32,13 @@ WAFv2 は web ACL の基本料金だけで $5/月、ルール込みで実質 ~$1
   ときはここに国を足す。
 - **edge cookie-presence gate（CloudFront Function `ApiAuthGate` / 無料）**: `/api/*` への
   viewer-request 時点で `vp_session` Cookie の**有無**だけを見る。無ければ Lambda に到達する
-  前に 403（`/api/login`, `/api/logout` は対象外）。これは Lambda 課金前のコスト遮断であり、
+  前に 401（`/api/login`, `/api/logout` は対象外）。Cookie 不在は「資格情報なし＝未認証」なので
+  403 ではなく 401 を返し、Lambda 側 `auth.guard` と同じステータスに揃える（フロントの
+  `apiFetch` が 401 で `/login` にリダイレクトできるようにするため）。これは Lambda 課金前のコスト遮断であり、
   HMAC の妥当性検証はしない（認証ロジックの二重化を避けるため、検証本体は Lambda 側のみ）。
   `infra/lib/videoplayer-stack.ts` の `ApiAuthGate`。
 - **アクセス境界 = HMAC セッション Cookie**（`backend/src/auth/`）。`/api/*` を全ガード。
-  認証の本体はこれ。Geo / edge gate を通り抜けた JP 由来のボットも Cookie が無ければ 401/403。
+  認証の本体はこれ。Geo / edge gate を通り抜けた JP 由来のボットも Cookie が無ければ 401。
 - **コスト上限 = Lambda 予約同時実行数**（`apiFn` の `reservedConcurrentExecutions: 10`）。
   旧 WAF の `/api` レート制限の代替。無認証フラッド（認証層で弾かれる）でも Lambda の
   実行数に天井があり、青天井の課金にならない。
