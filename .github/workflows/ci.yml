@@ -62,8 +62,8 @@ jobs:
       - run: npx cdk synth --quiet
         working-directory: infra
         env:
-          # fromLookup (Route53 zone) requires a concrete account at synth time.
-          # A dummy value is enough: CDK falls back to a placeholder zone ID when
-          # credentials are absent, and the real value is resolved at deploy time.
-          CDK_DEFAULT_ACCOUNT: '000000000000'
+          # fromLookup (Route53 zone) requires a concrete account at synth time so
+          # the context key in cdk.context.json (committed to the repo) matches.
+          # Account IDs are not secrets; this value appears in resource ARNs etc.
+          CDK_DEFAULT_ACCOUNT: '324175221232'
           CDK_DEFAULT_REGION: ap-northeast-1
