@@ -43,8 +43,8 @@ describe('playlist routes — unauthenticated', () => {
   let base: string;
 
   beforeAll(async () => {
-    // No AUTH_BYPASS, with a secret set → the guard is active.
-    ({ server, base } = await listen(buildDeps({ APP_SECRET: 'secret', AUTH_COOKIE_SECURE: 'false' })));
+    // No AUTH_BYPASS → the guard is active; with no session cookie every route 401s.
+    ({ server, base } = await listen(buildDeps({})));
   });
   afterAll(() => server.close());
 

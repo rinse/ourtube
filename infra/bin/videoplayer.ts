@@ -13,23 +13,23 @@ cdk.Tags.of(app).add('Project', 'OurTube');
 const account = process.env.CDK_DEFAULT_ACCOUNT;
 const region = process.env.CDK_DEFAULT_REGION ?? 'ap-northeast-1';
 
-// Access control is handled without WAF: CloudFront-native geo restriction
-// (country allowlist, free) drops foreign traffic at the edge, the HMAC auth
-// cookie gates /api/*, and the API Lambda's reserved concurrency caps cost.
-// The old CloudFront-scoped WAF stack (us-east-1) was removed to cut its
-// ~$10/mo floor ($5 web ACL + $1/rule). See docs/security.md.
+// Access control: OurTube sits behind the shared `*.app.esnir.net` auth. The
+// edge redirects unauthenticated viewers to auth.app.esnir.net/login and gates
+// /api/* on the shared `session` cookie; the API Lambda verifies that cookie
+// (ES256) against the platform JWKS. CloudFront-native geo restriction (country
+// allowlist, free) and the API Lambda's reserved concurrency cap cost. The old
+// CloudFront-scoped WAF stack (us-east-1) was removed to cut its ~$10/mo floor.
+// See docs/security.md.
 new VideoplayerStack(app, 'VideoplayerStack', {
   env: { account, region },
-  // Shared secret for the access gate. Provided by the deploy workflow from a
-  // GitHub Secret; never commit a real value.
-  appSecret: process.env.APP_SECRET ?? 'CHANGE-ME-IN-DEPLOY',
   bedrockModelId: process.env.BEDROCK_MODEL_ID ?? 'apac.anthropic.claude-sonnet-4-20250514-v1:0',
-  // Custom domain (optional). CERTIFICATE_ARN must be an ACM cert in us-east-1.
-  // See docs/custom-domain.md for the one-time shared-resource setup.
-  domainName: process.env.DOMAIN_NAME,
+  // CloudFront cert for ourtube.app.esnir.net — an ACM cert in us-east-1,
+  // imported by ARN. REQUIRED for a working deploy: the shared session cookie is
+  // scoped to `.app.esnir.net`, so it only reaches the app on that domain. With
+  // no cert the distribution falls back to *.cloudfront.net, the cookie never
+  // arrives, and every load 302s to login (return_to is rejected → loop). Omit
+  // it only for local synth / infra smoke-tests. See docs/custom-domain.md.
   certificateArn: process.env.CERTIFICATE_ARN,
-  hostedZoneId: process.env.HOSTED_ZONE_ID,
-  hostedZoneName: process.env.HOSTED_ZONE_NAME,
   // Optional: set to receive CloudWatch Alarm notifications by email (SNS).
   // Alarms are defined either way and visible in the console.
   alarmEmail: process.env.ALARM_EMAIL,

@@ -7,10 +7,7 @@ import { createApp } from './app';
 dotenv.config();
 
 const config = createAppConfig();
-console.log('AppConfiguration:', JSON.stringify({
-  ...config,
-  auth: { ...config.auth, secret: config.auth.secret ? '***' : '(empty)' },
-}, null, 2));
+console.log('AppConfiguration:', JSON.stringify(config, null, 2));
 
 const deps = createDependencies(config);
 const app = createApp(deps);

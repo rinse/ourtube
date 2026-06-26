@@ -5,7 +5,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-: "${APP_SECRET:?set APP_SECRET (the access gate shared secret)}"
+# Auth is the shared *.app.esnir.net session — no local secret. CERTIFICATE_ARN
+# (a us-east-1 ACM cert for ourtube.app.esnir.net) is REQUIRED for a working
+# deploy: the session cookie is scoped to .app.esnir.net and only reaches the
+# app on that domain. Omitting it deploys to *.cloudfront.net where auth can't
+# work (every load loops to login) — synth/smoke only. See docs/deploy.md.
+: "${CERTIFICATE_ARN:?set CERTIFICATE_ARN (us-east-1 ACM cert for ourtube.app.esnir.net)}"
 export CDK_DEFAULT_REGION="${CDK_DEFAULT_REGION:-${AWS_REGION:-ap-northeast-1}}"
 
 echo "==> backend deps"
