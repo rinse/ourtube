@@ -100,8 +100,6 @@ jobs:
         env:
           CDK_DEFAULT_REGION: ${{ vars.AWS_REGION }}
           BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
-          # CloudFront cert for ourtube.app.esnir.net — a us-east-1 ACM cert,
-          # imported by ARN. The app domain and the app.esnir.net hosted zone are
-          # platform constants now (the zone id is read from the SSM parameter
-          # /esnir/platform/hosted-zone-id). See docs/custom-domain.md.
-          CERTIFICATE_ARN: ${{ vars.CERTIFICATE_ARN }}
+          # The ACM cert (OurtubeCertStack, us-east-1) and Route53 alias records
+          # are fully CDK-managed. The cert ARN is passed to VideoplayerStack via
+          # CDK cross-region references — no manual CERTIFICATE_ARN var needed.

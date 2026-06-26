@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
+import { CertificateStack } from '../lib/certificate-stack';
 import { VideoplayerStack } from '../lib/videoplayer-stack';
 
 const app = new cdk.App();
@@ -20,16 +21,21 @@ const region = process.env.CDK_DEFAULT_REGION ?? 'ap-northeast-1';
 // allowlist, free) and the API Lambda's reserved concurrency cap cost. The old
 // CloudFront-scoped WAF stack (us-east-1) was removed to cut its ~$10/mo floor.
 // See docs/security.md.
+
+// ACM certificates for CloudFront must live in us-east-1. This stack owns the
+// cert for ourtube.app.esnir.net and shares it with VideoplayerStack via CDK
+// cross-region references (SSM parameter + Custom Resource reader, generated
+// automatically by CDK when crossRegionReferences: true is set on both stacks).
+const certStack = new CertificateStack(app, 'OurtubeCertStack', {
+  env: { account, region: 'us-east-1' },
+  crossRegionReferences: true,
+});
+
 new VideoplayerStack(app, 'VideoplayerStack', {
   env: { account, region },
+  crossRegionReferences: true,
+  certificate: certStack.certificate,
   bedrockModelId: process.env.BEDROCK_MODEL_ID ?? 'apac.anthropic.claude-sonnet-4-20250514-v1:0',
-  // CloudFront cert for ourtube.app.esnir.net — an ACM cert in us-east-1,
-  // imported by ARN. REQUIRED for a working deploy: the shared session cookie is
-  // scoped to `.app.esnir.net`, so it only reaches the app on that domain. With
-  // no cert the distribution falls back to *.cloudfront.net, the cookie never
-  // arrives, and every load 302s to login (return_to is rejected → loop). Omit
-  // it only for local synth / infra smoke-tests. See docs/custom-domain.md.
-  certificateArn: process.env.CERTIFICATE_ARN,
   // Optional: set to receive CloudWatch Alarm notifications by email (SNS).
   // Alarms are defined either way and visible in the console.
   alarmEmail: process.env.ALARM_EMAIL,

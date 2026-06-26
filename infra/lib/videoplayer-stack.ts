@@ -25,6 +25,7 @@ import {
   aws_sns_subscriptions as subscriptions,
 } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
+import type { ICertificate } from 'aws-cdk-lib/aws-certificatemanager';
 
 // --- Platform integration constants (esnir.net shared auth) --------------------
 // OurTube lives under the shared `*.app.esnir.net` auth umbrella (see the
@@ -46,12 +47,12 @@ const SSM_HOSTED_ZONE_ID_PARAM = '/esnir/platform/hosted-zone-id';
 
 export interface VideoplayerStackProps extends StackProps {
   bedrockModelId: string;
-  // CloudFront serves the app at `ourtube.app.esnir.net`, which needs an ACM
-  // certificate in us-east-1 (CloudFront requirement) covering that name. It is
-  // imported by ARN — a shared, out-of-band resource this stack never creates.
-  // Omit it (e.g. local synth) to fall back to the default *.cloudfront.net name
-  // with no custom-domain alias records.
-  certificateArn?: string;
+  // ACM certificate for ourtube.app.esnir.net, created by CertificateStack in
+  // us-east-1 and passed here via CDK cross-region references. Omit only for
+  // local synth / infra smoke-tests — without it the distribution falls back to
+  // *.cloudfront.net, which can't receive the Domain=.app.esnir.net cookie
+  // (→ auth redirect loop). See lib/certificate-stack.ts.
+  certificate?: ICertificate;
   // Optional: when set, an SNS topic is created and alarms email this address.
   // Omitted by default so the stack still synths/deploys with no extra config —
   // the alarms remain defined and visible in the CloudWatch console either way.
@@ -319,9 +320,7 @@ function handler(event) {
     });
 
     // Import the shared wildcard cert (us-east-1) by ARN, if a domain is configured.
-    const certificate = props.certificateArn
-      ? acm.Certificate.fromCertificateArn(this, 'Certificate', props.certificateArn)
-      : undefined;
+    const certificate = props.certificate;
 
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
       ...(certificate ? { domainNames: [APP_DOMAIN], certificate } : {}),
