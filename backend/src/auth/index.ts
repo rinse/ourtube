@@ -1,61 +1,41 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppConfig } from '../config';
-import { signSession, verifySession, secretMatches } from './session';
+import { verifySession } from './session';
 
 export type Auth = {
-  /** Express middleware that rejects unauthenticated requests (unless bypassed). */
+  /**
+   * Express middleware that rejects unauthenticated requests (unless bypassed).
+   * Verifies the shared `*.app.esnir.net` ES256 session cookie against the
+   * platform JWKS — there is no local login; minting the cookie is the auth
+   * service's job (auth.app.esnir.net). Unauthenticated callers get a 401 and
+   * the SPA bounces them to the centralized login (frontend/app/lib/api.ts).
+   */
   guard: (req: Request, res: Response, next: NextFunction) => void;
-  /** POST /api/login — verifies the shared secret and sets the session cookie. */
-  login: (req: Request, res: Response) => void;
-  /** POST /api/logout — clears the session cookie. */
-  logout: (req: Request, res: Response) => void;
 };
 
 export function createAuth(config: AppConfig): Auth {
-  const { secret, bypass, cookieName, sessionTtlSeconds, cookieSecure } = config.auth;
-
-  function setSessionCookie(res: Response): void {
-    const parts = [
-      `${cookieName}=${signSession(secret)}`,
-      'HttpOnly',
-      'Path=/',
-      'SameSite=Lax',
-      `Max-Age=${sessionTtlSeconds}`,
-    ];
-    if (cookieSecure) parts.push('Secure');
-    res.append('Set-Cookie', parts.join('; '));
-  }
-
-  function isAuthenticated(req: Request): boolean {
-    if (bypass) return true;
-    const token = readCookie(req, cookieName);
-    return verifySession(secret, token, sessionTtlSeconds);
-  }
+  const { bypass, cookieName, jwksUrl } = config.auth;
 
   return {
-    guard(req, res, next) {
-      if (isAuthenticated(req)) {
+    async guard(req, res, next) {
+      if (bypass) {
+        next();
+        return;
+      }
+      const token = readCookie(req, cookieName);
+      let claims;
+      try {
+        claims = await verifySession(jwksUrl, token);
+      } catch (err) {
+        console.error('session verification failed', err);
+        res.status(500).json({ error: 'Internal Server Error', message: 'Authentication check failed' });
+        return;
+      }
+      if (claims) {
         next();
         return;
       }
       res.status(401).json({ error: 'Unauthorized', message: 'Authentication required' });
-    },
-
-    login(req, res) {
-      const provided = typeof req.body?.secret === 'string' ? req.body.secret : '';
-      if (!secretMatches(provided, secret)) {
-        res.status(401).json({ error: 'Unauthorized', message: 'Invalid secret' });
-        return;
-      }
-      setSessionCookie(res);
-      res.json({ message: 'ok' });
-    },
-
-    logout(_req, res) {
-      const parts = [`${cookieName}=`, 'HttpOnly', 'Path=/', 'SameSite=Lax', 'Max-Age=0'];
-      if (cookieSecure) parts.push('Secure');
-      res.append('Set-Cookie', parts.join('; '));
-      res.json({ message: 'ok' });
     },
   };
 }

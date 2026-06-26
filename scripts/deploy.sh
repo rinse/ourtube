@@ -5,7 +5,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-: "${APP_SECRET:?set APP_SECRET (the access gate shared secret)}"
+# Auth is the shared *.app.esnir.net session — no local secret. The ACM cert
+# (OurtubeCertStack, us-east-1) is CDK-managed; no CERTIFICATE_ARN env var
+# needed. Route53 fromLookup runs at synth time so AWS credentials are required.
 export CDK_DEFAULT_REGION="${CDK_DEFAULT_REGION:-${AWS_REGION:-ap-northeast-1}}"
 
 echo "==> backend deps"

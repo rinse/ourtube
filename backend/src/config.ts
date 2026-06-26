@@ -36,13 +36,12 @@ export type AppConfig = {
     };
   };
   auth: {
-    secret: string;
     /** When true, all auth checks are skipped (local dev). */
     bypass: boolean;
+    /** Shared `*.app.esnir.net` session cookie name (minted by auth.app.esnir.net). */
     cookieName: string;
-    sessionTtlSeconds: number;
-    /** Set the Secure flag on the session cookie (disable for local http). */
-    cookieSecure: boolean;
+    /** Public JWKS that signs the ES256 session cookie. */
+    jwksUrl: string;
   };
   genai: {
     provider: GenAIProvider;
@@ -93,11 +92,9 @@ export function createAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig
       },
     },
     auth: {
-      secret: env.APP_SECRET ?? '',
       bypass: bool(env.AUTH_BYPASS),
-      cookieName: env.AUTH_COOKIE_NAME ?? 'vp_session',
-      sessionTtlSeconds: parseInt(env.AUTH_SESSION_TTL_SECONDS ?? `${60 * 60 * 24 * 7}`, 10),
-      cookieSecure: env.AUTH_COOKIE_SECURE !== 'false',
+      cookieName: env.AUTH_COOKIE_NAME ?? 'session',
+      jwksUrl: env.JWKS_URL ?? 'https://auth.app.esnir.net/.well-known/jwks.json',
     },
     genai: {
       provider: (env.GENAI_PROVIDER as GenAIProvider) ?? defaultProvider,

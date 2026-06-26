@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
+import { CertificateStack } from '../lib/certificate-stack';
 import { VideoplayerStack } from '../lib/videoplayer-stack';
 
 const app = new cdk.App();
@@ -13,23 +14,28 @@ cdk.Tags.of(app).add('Project', 'OurTube');
 const account = process.env.CDK_DEFAULT_ACCOUNT;
 const region = process.env.CDK_DEFAULT_REGION ?? 'ap-northeast-1';
 
-// Access control is handled without WAF: CloudFront-native geo restriction
-// (country allowlist, free) drops foreign traffic at the edge, the HMAC auth
-// cookie gates /api/*, and the API Lambda's reserved concurrency caps cost.
-// The old CloudFront-scoped WAF stack (us-east-1) was removed to cut its
-// ~$10/mo floor ($5 web ACL + $1/rule). See docs/security.md.
+// Access control: OurTube sits behind the shared `*.app.esnir.net` auth. The
+// edge redirects unauthenticated viewers to auth.app.esnir.net/login and gates
+// /api/* on the shared `session` cookie; the API Lambda verifies that cookie
+// (ES256) against the platform JWKS. CloudFront-native geo restriction (country
+// allowlist, free) and the API Lambda's reserved concurrency cap cost. The old
+// CloudFront-scoped WAF stack (us-east-1) was removed to cut its ~$10/mo floor.
+// See docs/security.md.
+
+// ACM certificates for CloudFront must live in us-east-1. This stack owns the
+// cert for ourtube.app.esnir.net and shares it with VideoplayerStack via CDK
+// cross-region references (SSM parameter + Custom Resource reader, generated
+// automatically by CDK when crossRegionReferences: true is set on both stacks).
+const certStack = new CertificateStack(app, 'OurtubeCertStack', {
+  env: { account, region: 'us-east-1' },
+  crossRegionReferences: true,
+});
+
 new VideoplayerStack(app, 'VideoplayerStack', {
   env: { account, region },
-  // Shared secret for the access gate. Provided by the deploy workflow from a
-  // GitHub Secret; never commit a real value.
-  appSecret: process.env.APP_SECRET ?? 'CHANGE-ME-IN-DEPLOY',
+  crossRegionReferences: true,
+  certificate: certStack.certificate,
   bedrockModelId: process.env.BEDROCK_MODEL_ID ?? 'apac.anthropic.claude-sonnet-4-20250514-v1:0',
-  // Custom domain (optional). CERTIFICATE_ARN must be an ACM cert in us-east-1.
-  // See docs/custom-domain.md for the one-time shared-resource setup.
-  domainName: process.env.DOMAIN_NAME,
-  certificateArn: process.env.CERTIFICATE_ARN,
-  hostedZoneId: process.env.HOSTED_ZONE_ID,
-  hostedZoneName: process.env.HOSTED_ZONE_NAME,
   // Optional: set to receive CloudWatch Alarm notifications by email (SNS).
   // Alarms are defined either way and visible in the console.
   alarmEmail: process.env.ALARM_EMAIL,

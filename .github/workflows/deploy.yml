@@ -99,11 +99,7 @@ jobs:
         working-directory: infra
         env:
           CDK_DEFAULT_REGION: ${{ vars.AWS_REGION }}
-          APP_SECRET: ${{ secrets.APP_SECRET }}
           BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
-          # Custom domain (optional). Set these as GitHub Variables once the
-          # shared zone + us-east-1 cert exist; see docs/custom-domain.md.
-          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
-          CERTIFICATE_ARN: ${{ vars.CERTIFICATE_ARN }}
-          HOSTED_ZONE_ID: ${{ vars.HOSTED_ZONE_ID }}
-          HOSTED_ZONE_NAME: ${{ vars.HOSTED_ZONE_NAME }}
+          # The ACM cert (OurtubeCertStack, us-east-1) and Route53 alias records
+          # are fully CDK-managed. The cert ARN is passed to VideoplayerStack via
+          # CDK cross-region references — no manual CERTIFICATE_ARN var needed.

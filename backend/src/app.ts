@@ -29,11 +29,9 @@ export function createApp(deps: Dependencies): Express {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  // --- Public routes (registered before the guard so they bypass auth) ---
-  app.post('/api/login', auth.login);
-  app.post('/api/logout', auth.logout);
-
-  // --- Everything below requires a valid session ---
+  // --- Everything under /api requires a valid platform session ---
+  // There is no local login/logout: the shared `.app.esnir.net` session cookie
+  // is minted by auth.app.esnir.net and verified here against its public JWKS.
   app.use('/api', auth.guard);
 
   app.get('/api/videos', async (_req: Request, res: Response) => {
