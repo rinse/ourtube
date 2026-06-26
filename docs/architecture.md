@@ -14,7 +14,7 @@ YouTube ライクな個人用動画配信サービスを AWS サーバーレス�
                          ▼
                  ┌────────────────────┐      Bedrock (Converse)
                  │   API Lambda (単一)  │────► タイトルサジェスト
-                 │ - 認証(secret→cookie)│
+                 │ - 認証(platform JWT)  │
                  │ - 一覧/取得/削除/改名 │
                  │ - presign upload     │
                  │ - segment 都度 302   │
@@ -41,7 +41,7 @@ YouTube ライクな個人用動画配信サービスを AWS サーバーレス�
 | ストレージ | S3 | MinIO（S3 SDK + endpoint） | `VideoStorage` / `S3VideoStorage` |
 | 変換 | MediaConvert（ジョブ）+ Conversion Lambda（完了） | ffmpeg（同プロセス・バックグラウンド） | `Converter` / `MediaConvertConverter` ・ `LocalFfmpegConverter` |
 | AI | Bedrock | LM Studio | `GenAI` / `BedrockGenAI` ・ `LMStudioGenAI` ・ `OpenAIGenAI` |
-| 認証 | 共有秘密 → HMAC セッション Cookie | `AUTH_BYPASS=1` | `src/auth/` |
+| 認証 | platform ES256 JWT（`session` Cookie、JWKS 検証） | `AUTH_BYPASS=1` | `src/auth/` |
 
 ## アップロード〜再生のフロー
 
@@ -56,7 +56,7 @@ YouTube ライクな個人用動画配信サービスを AWS サーバーレス�
 
 - **動画変換は MediaConvert**。5GB 級でも時間制限なく処理でき、ffmpeg 運用が不要。ローカルは既存 ffmpeg をスタンドインに流用。
 - **メタデータは DynamoDB シングルテーブル**（[dynamodb-schema.md](./dynamodb-schema.md)）。SQLite の 0/1→boolean 強制は不要なため撤去。
-- **認証は共有秘密 → httpOnly セッション Cookie**（`/api/*` をガード）。「認証は省略しつつ自分だけ」を最小実装で満たす。ローカルは `AUTH_BYPASS`。
+- **認証は platform 共通セッション Cookie**（ES256 JWT、`Domain=.app.esnir.net`）。`/api/*` をガード。未認証アクセスは `auth.app.esnir.net/login` にリダイレクト。ローカルは `AUTH_BYPASS`。
 - **再生は単一パス**：マニフェストは無改変で配信し、セグメントは都度リクエスト時に presign して 302 リダイレクト。CloudFront 署名 Cookie/OAC-for-videos は採用せず（local/prod 二重パスとキー管理を避けるため）。CloudFront は静的 SPA 配信と `/api/*` のプロキシ（キャッシュ無効・CACHING_DISABLED）に限定。
 - **変換トリガは S3 イベントではなく `complete` 呼び出し**。インフラを簡素化し local/prod を統一。堅牢性は Conversion Lambda（完了イベント）側で担保。
 - **静的 SPA は S3 + CloudFront**。Next.js を `output: 'export'` で静的化。

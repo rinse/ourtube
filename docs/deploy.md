@@ -1,14 +1,14 @@
 # デプロイ手順
 
 **結論: `cdk deploy` だけではデプロイされない。** `cdk deploy` は最後の一歩で、
-その前に「アーティファクトのビルド」「初回ブートストラップ」「シークレット指定」が必要。
+その前に「アーティファクトのビルド」「初回ブートストラップ」が必要。
 理由は CDK スタックが次に依存しているため:
 
-- `infra/lib/videoplayer-stack.ts` の `BucketDeployment` が `frontend/out`（静的export）
+- `infra/lib/videoplayer-stack.ts` の `BucketDeployment` が `frontend/out`（静的 export）
   をアセットとして要求 → **未ビルドだと synth/deploy が失敗**。
 - API/Conversion Lambda は esbuild で `backend/src` をバンドル → **backend の依存が必要**。
-- `bin/videoplayer.ts` は `APP_SECRET` を env から取得（未指定だと
-  `CHANGE-ME-IN-DEPLOY` のままデプロイされ、誰でも入れてしまう）。
+
+認証は platform 共通セッション Cookie（ES256 JWT）で、ローカルシークレットは不要。
 
 ## 0. 一度だけ必要な準備（手動）
 
@@ -23,7 +23,7 @@
    未有効だとタイトルサジェストのみ `AccessDenied`（致命的ではない）。
 4. **GitHub Actions 経由で deploy する場合**（推奨）は追加で:
    - GitHub OIDC プロバイダ + デプロイ用 IAM ロールを作成
-   - リポジトリ Secrets: `AWS_DEPLOY_ROLE_ARN`, `APP_SECRET`
+   - リポジトリ Secrets: `AWS_DEPLOY_ROLE_ARN`
    - リポジトリ Variables: `AWS_REGION`, `BEDROCK_MODEL_ID`
    - **2 つの Environment を用意**（詳細は「3. デプロイの安全弁」）:
      - `production`（必須レビュアーなし。アプリ変更の自動デプロイ用）
@@ -35,7 +35,6 @@
 順序が重要。ワンショットスクリプトを用意済み:
 
 ```bash
-export APP_SECRET='<長いランダム文字列>'
 export CDK_DEFAULT_REGION='ap-northeast-1'
 export BEDROCK_MODEL_ID='apac.anthropic.claude-sonnet-4-20250514-v1:0'  # リージョンに合わせる
 bash scripts/deploy.sh
@@ -46,7 +45,8 @@ bash scripts/deploy.sh
 ```bash
 cd backend  && npm ci
 cd frontend && npm ci && NEXT_EXPORT=true npm run build   # out/ を生成
-cd infra    && npm ci && npx cdk deploy --require-approval never
+cd infra    && npm ci && npx cdk deploy --all --require-approval never
+# OurtubeCertStack（us-east-1）と VideoplayerStack（ap-northeast-1）の 2 スタックをデプロイ
 ```
 
 ## 2. GitHub Actions 経由（推奨・自動デプロイ）
@@ -104,8 +104,8 @@ environment:
 この安全弁は GitHub リポジトリ設定での手動作業を前提とする:
 
 - `production-infra` Environment を作成し、**必須レビュア**を設定する。
-- `production` と同じ Secrets（`APP_SECRET`, `AWS_DEPLOY_ROLE_ARN`）と
-  Variables（`AWS_REGION`, `BEDROCK_MODEL_ID`, `DOMAIN_NAME` など）を**複製**する。
+- `production` と同じ Secrets（`AWS_DEPLOY_ROLE_ARN`）と
+  Variables（`AWS_REGION`, `BEDROCK_MODEL_ID`）を**複製**する。
 
 これを行うまで、infra/ワークフロー変更や手動起動のデプロイは**承認待ちで止まる**か、
 Secrets/Variables が引けず**失敗**する。
@@ -135,25 +135,21 @@ concurrency:
 
 ## 5. デプロイ後
 
-- 出力 `SiteUrl`（CloudFront ドメイン）を開く。
-- 初回は `/login` で `APP_SECRET` を入力（httpOnly セッション Cookie が発行される）。
+- `https://ourtube.app.esnir.net/` を開く。未ログイン時は `auth.app.esnir.net/login` へ
+  リダイレクトされる。platform アカウントでログインすると `session` Cookie が発行される。
 - アップロード → 変換（MediaConvert）→ 再生 を確認。
 
 ### CfnOutput
 
 | 出力 | 用途 |
 |---|---|
-| `SiteUrl` | フロント/アクセス URL（CloudFront） |
+| `SiteUrl` | CloudFront ドメイン（カスタムドメイン前の確認用） |
 | `ApiFunctionUrl` | API Lambda Function URL（直接叩く用、通常は不要） |
 | `StorageBucketName` | 動画 S3 バケット |
 | `SiteBucketName` | 静的 SPA バケット |
 | `TableName` | DynamoDB テーブル |
 
-> `CustomDomainUrl` はカスタムドメイン設定時（`domainName`/`hostedZoneId`/`hostedZoneName`
-> を指定した場合）のみ条件付きで出力される（`infra/lib/videoplayer-stack.ts` の
-> `CustomDomainUrl`）。未設定のデプロイでは出力されない。
-
-## 6. 既知の注意点 / 未検証
+## 6. 既知の注意点
 
 - **MediaConvert の master manifest 名**: 本構成は `videos/<id>/index.m3u8` になる前提
   （Destination を `…/index` にするテクニック）。実ジョブで名前が異なると再生が 404 になるが、
@@ -161,8 +157,9 @@ concurrency:
   ずれた場合は `failed` として可視化される（ログに実キーは出ない点のみ注意）。
 - **Bedrock の推論プロファイル ID** はリージョン依存。`BEDROCK_MODEL_ID` を対象リージョンの
   有効な ID に合わせること。
-- クラウド実機（MediaConvert/Bedrock/CloudFront/Function URL）はまだ未デプロイ・未検証。
-  ローカル E2E（MinIO/DynamoDB Local/ffmpeg）は検証済み（[local-dev.md](./local-dev.md)）。
+- **CDK synth（CI）**: `OurtubeCertStack` が `fromLookup` を使うため Route53 API を叩く。
+  CI には `infra/cdk.context.json` のキャッシュを commit しておき、`CDK_DEFAULT_ACCOUNT`
+  を実アカウント ID に設定することで credentials なしで synth できる。
 
 ## 7. 撤去
 
