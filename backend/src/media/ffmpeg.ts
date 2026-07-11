@@ -155,7 +155,10 @@ function captureThumbnailAt(sourcePath: string, thumbnailPath: string, seek: str
       '-i', sourcePath,
       '-ss', seek,
       '-vframes', '1',
-      '-vf', 'scale=320:180',
+      // 320x180 is fixed output geometry, but source aspect ratio varies (e.g.
+      // portrait video) — scale to fit inside the box, then pad with black
+      // bars, rather than stretching to fill it.
+      '-vf', 'scale=320:180:force_original_aspect_ratio=decrease,pad=320:180:(ow-iw)/2:(oh-ih)/2:black',
       '-y',
       thumbnailPath,
     ]);

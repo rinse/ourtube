@@ -101,6 +101,12 @@ export class MediaConvertConverter implements Converter {
               VideoDescription: {
                 Width: 320,
                 Height: 180,
+                // DEFAULT = "Fit with padding": preserves aspect ratio and
+                // pads with black, so portrait sources aren't stretched.
+                // Matches the local ffmpeg converter's pad filter. This is
+                // already MediaConvert's implicit default; set explicitly to
+                // document the intent.
+                ScalingBehavior: 'DEFAULT',
                 CodecSettings: {
                   Codec: 'FRAME_CAPTURE',
                   FrameCaptureSettings: {
