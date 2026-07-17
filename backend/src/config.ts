@@ -3,7 +3,7 @@ import os from 'os';
 import fs from 'fs';
 
 export type ConverterType = 'local' | 'mediaconvert';
-export type GenAIProvider = 'bedrock' | 'openai' | 'lmstudio';
+export type GenAIProvider = 'bedrock' | 'openai' | 'mantle' | 'lmstudio';
 
 export type AppConfig = {
   port: number;
@@ -47,6 +47,7 @@ export type AppConfig = {
     provider: GenAIProvider;
     bedrock: { region: string; modelId: string };
     openai: { apiKey?: string; model: string };
+    mantle: { apiKey?: string; region: string; model: string };
     lmStudio: { host: string; model: string };
   };
 };
@@ -105,6 +106,11 @@ export function createAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig
       openai: {
         apiKey: env.OPENAI_API_KEY,
         model: env.OPENAI_MODEL ?? 'gpt-4o',
+      },
+      mantle: {
+        apiKey: env.MANTLE_API_KEY,
+        region: env.MANTLE_REGION ?? 'us-east-1',
+        model: env.MANTLE_MODEL ?? 'google.gemma-4-e2b',
       },
       lmStudio: {
         host: env.LM_STUDIO_HOST ?? 'http://127.0.0.1:1234/v1',
