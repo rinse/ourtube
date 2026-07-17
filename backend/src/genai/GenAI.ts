@@ -3,6 +3,7 @@ import { MetadataStore } from '../metadata/MetadataStore';
 import { LMStudioGenAI } from './LMStudio';
 import { OpenAIGenAI } from './OpenAI';
 import { BedrockGenAI } from './Bedrock';
+import { MantleGenAI } from './Mantle';
 
 export type GenAI = {
   suggestVideoTitle: (filename: string) => Promise<string | undefined>;
@@ -20,6 +21,12 @@ export function createGenAI(deps: { metadata: MetadataStore; config: AppConfig }
       }
       console.log('Using OpenAI for GenAI');
       return OpenAIGenAI(deps.metadata, genai.openai.apiKey, genai.openai.model);
+    case 'mantle':
+      if (!genai.mantle.apiKey) {
+        throw new Error('GENAI_PROVIDER=mantle but MANTLE_API_KEY is not set');
+      }
+      console.log('Using Bedrock Mantle for GenAI');
+      return MantleGenAI(deps.metadata, genai.mantle.apiKey, genai.mantle.region, genai.mantle.model);
     case 'lmstudio':
     default:
       console.log('Using LM Studio for GenAI');
