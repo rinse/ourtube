@@ -1,11 +1,10 @@
-import { ReactNode } from 'react';
 import Link from 'next/link';
 
 interface HeaderProps {
-  children?: ReactNode;
+  uploadLink?: boolean;
 }
 
-export default function Header({ children }: HeaderProps) {
+export default function Header({ uploadLink = false }: HeaderProps) {
   return (
     <header className="bg-white shadow-none sm:shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -18,7 +17,14 @@ export default function Header({ children }: HeaderProps) {
               プレイリスト
             </Link>
           </div>
-          {children}
+          {uploadLink && (
+            <Link
+              href="/upload"
+              className="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+            >
+              + Upload
+            </Link>
+          )}
         </div>
       </div>
     </header>

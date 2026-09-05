@@ -133,7 +133,7 @@ function PlaylistList() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <Header />
+      <Header uploadLink />
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-xl font-semibold text-gray-800 mb-6">プレイリスト</h1>
 
@@ -392,7 +392,7 @@ function PlaylistDetail({ playlistId }: { playlistId: string }) {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-100">
-        <Header />
+        <Header uploadLink />
         <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="animate-pulse">
             <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
@@ -406,7 +406,7 @@ function PlaylistDetail({ playlistId }: { playlistId: string }) {
   if (error || !playlist) {
     return (
       <div className="min-h-screen bg-gray-100">
-        <Header />
+        <Header uploadLink />
         <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <p className="text-red-600 text-sm">{error || 'プレイリストが見つかりません'}</p>
           <Link href="/playlists" className="text-blue-600 hover:underline text-sm mt-4 inline-block">
@@ -422,7 +422,7 @@ function PlaylistDetail({ playlistId }: { playlistId: string }) {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <Header />
+      <Header uploadLink />
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Link href="/playlists" className="text-blue-600 hover:underline text-sm mb-4 inline-block">
           ← プレイリスト一覧へ戻る

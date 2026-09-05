@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import VideoList, { SortOption } from './components/VideoList';
 import Header from './components/Header';
-import Link from 'next/link';
 
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -11,14 +10,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <Header>
-        <Link
-          href="/upload"
-          className="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
-        >
-          + Upload
-        </Link>
-      </Header>
+      <Header uploadLink />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
