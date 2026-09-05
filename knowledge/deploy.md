@@ -1,48 +1,51 @@
 ---
 type: Playbook
-title: デプロイの固い順序制約と人間承認ゲート
-description: cdk deploy 単体では不可。frontend/out ビルド・backend 依存・APP_SECRET が前提。GitHub Actions + production Environment 承認 + OIDC
+title: デプロイの固い順序制約と承認ゲート
+description: cdk deploy 単体では不可。frontend/out ビルドと backend 依存が前提。2 スタック構成、Environment 切替による承認、OIDC、RETAIN
 tags: [deploy, cdk, github-actions, oidc]
 timestamp: 2026-06-21T00:00:00Z
 ---
 
 # 「cdk deploy 単体では動かない」理由
 
-CDK スタックが次に依存（`docs/deploy.md` と一致・正確）:
+CDK スタックが次に依存する（`docs/deploy.md` と一致）:
 - `BucketDeployment` が `frontend/out`（静的 export）をアセット要求 → **未ビルドだと synth/deploy 失敗**。
 - API/Conversion Lambda は esbuild で `backend/src` をバンドル → backend 依存が必要。
-- `APP_SECRET` 未指定だと `CHANGE-ME-IN-DEPLOY` のままデプロイされ**誰でも入れる**（[[auth-model]]）。
 
-正しい順序（`scripts/deploy.sh`）: `backend npm ci` → `frontend npm ci && NEXT_EXPORT=true build` → `infra npm ci && cdk deploy`。
+正しい順序: `backend npm ci` → `frontend npm ci && NEXT_EXPORT=true build` → `infra npm ci && cdk deploy --all`。
+
+# 2 スタック構成
+
+- `OurtubeCertStack`（**us-east-1**）: `ourtube.app.esnir.net` の ACM 証明書。CloudFront は us-east-1 の証明書しか受け付けない。`PublicHostedZone.fromLookup` で `app.esnir.net` を引くので **synth 時に AWS 認証情報が要る**（結果は `infra/cdk.context.json` にキャッシュされ、CI はこれを commit 済みの状態で使う）。
+- `VideoplayerStack`（`ap-northeast-1`）: 本体。証明書 ARN は両スタックの `crossRegionReferences: true` 経由で受け取る（CDK が us-east-1 の SSM パラメータ + Custom Resource リーダーを自動生成する）。ARN を手で配線する必要はない。
+- スタックが 2 つあるので、名前を挙げないデプロイには **`--all` が必須**（無いと CDK が対象を決められずエラー）。
+
+Route 53 の A/AAAA エイリアスは `VideoplayerStack` が作る。ゾーン ID は platform が SSM `/esnir/platform/hosted-zone-id` に公開したものを固定名で読む（CFN Import ではない）。
 
 # 2 つの経路
 
-- **手動**: `export APP_SECRET=... CDK_DEFAULT_REGION=... BEDROCK_MODEL_ID=...; bash scripts/deploy.sh`。
-- **推奨（人間承認）**: GitHub Actions **Deploy**（`workflow_dispatch`）→ ディスパッチした**ブランチがそのままデプロイ対象**（`ref:` 指定なし）→ `production` Environment の必須レビュアー承認 → OIDC で AssumeRole → `cdk deploy --all`。
+- **手動**: `export CDK_DEFAULT_REGION=... BEDROCK_MODEL_ID=...; bash scripts/deploy.sh`。アプリに渡すシークレットはない（認証は platform の共通セッション Cookie。[[auth-model]]）。
+- **自動**: `main` への push で GitHub Actions **Deploy** が起動 → OIDC で AssumeRole → `cdk deploy --all`。
 
-# 一度だけの準備
+# 承認ゲート（Environment 切替）
 
-`cdk bootstrap` / Bedrock モデルアクセス有効化 / (Actions 経由なら) Secrets `AWS_DEPLOY_ROLE_ARN`,`APP_SECRET`・Variables `AWS_REGION`,`BEDROCK_MODEL_ID`。
+`deploy` job の `environment.name` を `detect` job の出力で切り替える。同一 Environment では承認の有無を式で切り替えられない（protection rule は Environment の属性）ためのイディオム:
 
-# 単一スタック・WAF なし
+- **`production`**（必須レビュアーなし）: backend/frontend だけの変更。
+- **`production-infra`**（必須レビュアーあり）: `infra/**` または `.github/workflows/**` を含む変更、および `workflow_dispatch`（diff 基準が曖昧なので安全側に倒している）。
 
-WAF 撤去で us-east-1 別スタックや cross-region 参照は不要。単一 `VideoplayerStack`（`--all` は無害な将来対応）。防御は [[cloudfront-security]]。
-
-# カスタムドメイン（任意・全 construct optional）
-
-`DOMAIN_NAME`/`CERTIFICATE_ARN`（**証明書は us-east-1 必須**）を渡すと CloudFront に別名紐付け。`HOSTED_ZONE_ID`/`HOSTED_ZONE_NAME` も渡すと Route 53 A/AAAA エイリアスまで作る（`videoplayer-stack.ts:279-290`）。採用方式は Route 53 に委譲せず現 DNS に手動 CNAME（`docs/custom-domain.md`）。これらを渡さなければ `*.cloudfront.net` 既定で動く。
+2 つの Environment は**同じ Secrets（`AWS_DEPLOY_ROLE_ARN`）と Variables（`AWS_REGION`, `BEDROCK_MODEL_ID`）を複製して持つ**必要がある。`**.md` / `docs/**` だけの push は `paths-ignore` でワークフロー自体が起動しない。
 
 # 撤去とデータ保持
 
-`cdk destroy`。ただし**S3 バケットも DynamoDB テーブルも `RemovalPolicy.RETAIN`**（`videoplayer-stack.ts`）。残置リソースは手動削除。
+`cdk destroy --all`。ただし **S3 バケットも DynamoDB テーブルも `RemovalPolicy.RETAIN`**。残置リソースは手動削除。
 
 # CfnOutput
 
-`SiteUrl`(CloudFront) / `ApiFunctionUrl` / `StorageBucketName` / `SiteBucketName` / `TableName`。
-※ `docs/deploy.md` の出力表に**載っていないが**、カスタムドメイン設定時のみ `CustomDomainUrl` が条件付きで追加される（`videoplayer-stack.ts:289`）。
+`VideoplayerStack`: `SiteUrl`(CloudFront) / `CustomDomainUrl` / `ApiFunctionUrl` / `StorageBucketName` / `SiteBucketName` / `TableName`。`OurtubeCertStack`: `CertificateArn`。
 
 # Citations
 
 [1] `scripts/deploy.sh`, `.github/workflows/deploy.yml`, `infra/bin/videoplayer.ts`
-[2] `infra/lib/videoplayer-stack.ts`（RETAIN / 条件付き CustomDomainUrl / 別名）
-[3] `docs/deploy.md`, `docs/custom-domain.md`（概ね正確）
+[2] `infra/lib/videoplayer-stack.ts`, `infra/lib/certificate-stack.ts`（cross-region references / RETAIN / エイリアス）
+[3] `docs/deploy.md`, `docs/custom-domain.md`

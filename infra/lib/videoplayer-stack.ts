@@ -33,7 +33,7 @@ import type { ICertificate } from 'aws-cdk-lib/aws-certificatemanager';
 // constants, deliberately hardcoded rather than parameterized:
 //   - the app is served at `ourtube.app.esnir.net`;
 //   - unauthenticated viewers are redirected to the central login at
-//     `auth.app.esnir.net/login` (there is no local login anymore);
+//     `auth.app.esnir.net/login`;
 //   - the API Lambda verifies the shared `session` cookie (ES256) against the
 //     platform JWKS — see backend/src/auth/.
 // The Route 53 hosted zone for `app.esnir.net` is published by the platform as
@@ -119,10 +119,9 @@ export class VideoplayerStack extends Stack {
       runtime: lambda.Runtime.NODEJS_22_X,
       memorySize: 512,
       timeout: Duration.seconds(30),
-      // Hard ceiling on concurrent invocations. Replaces the WAF /api rate-limit
-      // rule as the cost circuit-breaker: a single user needs only a handful, so
-      // even an unauthenticated flood (rejected at the auth layer) can't run up
-      // an unbounded Lambda bill.
+      // Hard ceiling on concurrent invocations — the cost circuit-breaker: a
+      // single user needs only a handful, so even an unauthenticated flood
+      // (rejected at the auth layer) can't run up an unbounded Lambda bill.
       reservedConcurrentExecutions: 10,
       depsLockFilePath: path.join(BACKEND, 'package-lock.json'),
       bundling,
@@ -296,8 +295,8 @@ function handler(event) {
     // cookie *presence*; the ES256 signature is still verified at the Lambda
     // against the platform JWKS (no auth logic duplicated at edge).
     //
-    // There is no local login/logout endpoint anymore — the cookie is minted by
-    // auth.app.esnir.net — so every /api/* path is gated uniformly.
+    // The cookie is minted by auth.app.esnir.net and OurTube exposes no login
+    // route of its own, so every /api/* path is gated uniformly.
     //
     // Cookie absence means "no credentials presented" → 401 Unauthorized, not
     // 403 Forbidden (which is "authenticated but not allowed"). This matches the
@@ -319,15 +318,16 @@ function handler(event) {
 }`),
     });
 
-    // Import the shared wildcard cert (us-east-1) by ARN, if a domain is configured.
+    // Cert for APP_DOMAIN, created in us-east-1 by CertificateStack and handed
+    // over by CDK cross-region references. Absent only on lookup-free synth.
     const certificate = props.certificate;
 
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
       ...(certificate ? { domainNames: [APP_DOMAIN], certificate } : {}),
-      // Edge-level country allowlist (free) in place of the WAF geo-match rule:
-      // foreign traffic is dropped before it reaches the origin. This is a
-      // traffic filter, not the access boundary — the HMAC auth cookie still
-      // gates /api/*. Add countries here when accessing from abroad.
+      // Edge-level country allowlist (free): foreign traffic is dropped before
+      // it reaches the origin. This is a traffic filter, not the access
+      // boundary — the platform session cookie gates /api/*. Add countries here
+      // when accessing from abroad.
       geoRestriction: cloudfront.GeoRestriction.allowlist('JP'),
       defaultRootObject: 'index.html',
       defaultBehavior: {
@@ -363,9 +363,9 @@ function handler(event) {
             cookieBehavior: cloudfront.CacheCookieBehavior.none(),
             headerBehavior: cloudfront.CacheHeaderBehavior.none(),
             queryStringBehavior: cloudfront.CacheQueryStringBehavior.none(),
-            // The origin sends `Cache-Control: public, max-age=3600`
-            // (backend/src/app.ts); CloudFront honors that within these
-            // bounds, so defaultTtl only applies if that header is absent.
+            // The origin sends a long-lived immutable `Cache-Control`
+            // (backend/src/app.ts); CloudFront honors that up to maxTtl, so
+            // defaultTtl only applies if that header is absent.
             minTtl: Duration.seconds(0),
             defaultTtl: Duration.hours(1),
             maxTtl: Duration.days(1),

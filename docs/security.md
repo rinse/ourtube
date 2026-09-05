@@ -1,8 +1,8 @@
 # セキュリティ（CloudFront / Lambda URL の防御）
 
-`ourtube.app.esnir.net` の防御構成。WAF は費用対効果が見合わないため撤去済み（WAFv2 は
-web ACL 基本料金だけで $5/月超）。個人利用・単一ユーザーの前提で、無料か Lambda/CloudFront
-の従量コスト内に収まる手段で多層防御を構成する。
+`ourtube.app.esnir.net` の防御構成。個人利用・単一ユーザーの前提で、無料か
+Lambda/CloudFront の従量コスト内に収まる手段だけで多層防御を組む。WAF は使わない
+（WAFv2 は web ACL の基本料金だけで $5/月超かかり、この規模では見合わない）。
 
 ## 防御構成
 
@@ -55,7 +55,14 @@ Functions は JWKS fetch / crypto が実行できないため）。Cookie が存
 なければ Lambda に到達する前に 401 を返す。Lambda 課金前のコスト遮断が目的であり、
 ES256 署名の検証はしない（認証ロジックの二重化を避けるため）。
 
-`/api/login` / `/api/logout` は削除済みで、すべての `/api/*` を均一にガードする。
+OurTube 側にログイン用の公開ルートは無いので、`/api/*` は例外なく均一にガードされる。
+
+`/api/*` はエッジキャッシュしない（`CACHING_DISABLED`）が、サムネイル
+（`api/videos/*/thumbnail.jpg`）だけは専用 behavior でキャッシュする。一覧ページが
+数十枚を一斉に取りに来て Lambda の同時実行枠を食い潰すのを避けるため。**gate は
+キャッシュヒットでも毎リクエスト走る**ので未認証は参照前に弾かれ、キャッシュキーから
+Cookie を外しているだけ（MISS 時は Cookie がオリジンへ転送され Lambda 側の検証も効く）。
+内容が動画 ID に対して不変で機微も薄い、という条件付きの例外。
 
 ### アクセス境界（API Lambda の platform ES256 JWKS 検証）
 
@@ -107,6 +114,5 @@ mutating メソッドに自動付与する（空本文は空文字のハッシ�
 - 動画セグメントは毎回 `/api/*`（edge cookie gate + Lambda JWKS）を通ってから presign
   された S3 URL へ 302 リダイレクトされる。CloudFront / Geo / 認証を通らないのは、その
   302 が指す先の S3 への最終的なバイト取得のみ（presigned URL 自体は短命）。
-- WAF 撤去のため、マネージドルール（SQLi 等の汎用攻撃シグネチャ）の多層防御はない。
-  `/api/*` は認証必須・本文は小さい・動画は S3 直 PUT のため、個人用途では許容と判断
-  している。
+- マネージドルール（SQLi 等の汎用攻撃シグネチャ）による層は持たない。`/api/*` は認証必須・
+  本文は小さい・動画は S3 直 PUT のため、個人用途では許容と判断している。

@@ -20,23 +20,27 @@ fast development. See `docs/architecture.md` for the full picture.
 - **Conversion**: `Converter` abstraction. Prod = `MediaConvertConverter` (submits a
   job) + `backend/src/lambda/conversion.ts` (EventBridge completion → `finalize`).
   Local = `LocalFfmpegConverter` (ffmpeg in-process, background).
-- **AI**: `GenAI` with `BedrockGenAI` (prod) / `LMStudioGenAI` / `OpenAIGenAI`.
-- **Auth**: shared secret → HMAC httpOnly session cookie (`backend/src/auth/`),
-  `/api/*` guarded. `AUTH_BYPASS=1` locally.
+- **AI**: `GenAI`, selected by `GENAI_PROVIDER`: `BedrockGenAI` (prod) / `OpenAIGenAI` /
+  `MantleGenAI` (AWS Bedrock Mantle) / `LMStudioGenAI` (local default).
+- **Auth**: the platform-wide `session` cookie (ES256 JWT, `Domain=.app.esnir.net`,
+  minted by auth.app.esnir.net) is verified against its JWKS (`backend/src/auth/`).
+  Every `/api/*` route is guarded; there is no login endpoint here. `AUTH_BYPASS=1` locally.
 - **Frontend**: Next.js static export (`output: 'export'`), client-rendered, calls
   same-origin `/api/*`. Detail page is `/videos?id=...` (no dynamic route, for static export).
 - **Delivery**: CloudFront fronts the SPA (S3+OAC) and proxies `/api/*` to the Lambda.
   HLS playback is single-path: the API serves `index.m3u8` verbatim (relative paths);
   each segment request (`GET /api/videos/:id/:segment`) is 302-redirected to a
   per-request presigned S3/MinIO URL.
-- **IaC**: AWS CDK (`infra/`). **CI/CD**: GitHub Actions (`.github/workflows/`),
-  deploy runs automatically on push to `main` (also `workflow_dispatch`), via the
-  `production` Environment + OIDC, with no required-reviewer approval.
+- **IaC**: AWS CDK (`infra/`), two stacks: `OurtubeCertStack` (us-east-1, ACM cert) and
+  `VideoplayerStack` (ap-northeast-1), wired by cross-region references. **CI/CD**:
+  GitHub Actions (`.github/workflows/`), deploy runs on push to `main` via OIDC.
+  App-only changes use the `production` Environment (no approval); `infra/**` and
+  workflow changes, and any `workflow_dispatch`, use `production-infra` (required reviewer).
 
 ## Dependency wiring
 
 `backend/src/config.ts` builds `AppConfig` from env; `backend/src/dependencies.ts`
-constructs `{ metadata, storage, converter, genAI }`. Handlers take these deps —
+constructs `{ metadata, playlist, storage, converter, genAI }`. Handlers take these deps —
 do not reach for globals.
 
 ## Commands
@@ -56,14 +60,14 @@ cd frontend && NEXT_EXPORT=true npm run build   # static export to out/
 
 # Infra
 cd infra && npm run synth
-cd infra && npm run deploy        # cdk deploy (normally via GitHub Actions)
+cd infra && npm run deploy        # cdk deploy --all (normally via GitHub Actions)
 ```
 
 ## Conventions / gotchas
 
-- **No SQLite, no multer, no S3-event trigger** — these were removed. Upload is
-  browser SHA256 → `POST /api/uploads` (presigned PUT, dedup) → PUT to S3 →
-  `POST /api/uploads/:id/complete` (starts conversion).
+- **Upload** is browser SHA256 → `POST /api/uploads` (presigned PUT, dedup) → PUT
+  straight to S3 → `POST /api/uploads/:id/complete` (starts conversion). Bytes never
+  pass through the API, and conversion is triggered by that call, not by an S3 event.
 - **Status** is only `converting | ready | failed` (no `pending`). `has_thumbnail`
   is a native boolean.
 - **Thumbnail** filename is `thumbnail.jpg` (both converters).
@@ -78,5 +82,4 @@ DynamoDB single table `videoplayer` — see `docs/dynamodb-schema.md`.
 
 ## API endpoints
 
-See README.md (table). Public: `/api/login`, `/api/logout`.
-Everything else under `/api/*` requires the session cookie.
+See README.md (table). Everything under `/api/*` requires the platform session cookie.

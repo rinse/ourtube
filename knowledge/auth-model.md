@@ -1,33 +1,34 @@
 ---
 type: Subsystem
-title: 認証 — ステートレス HMAC セッション Cookie
-description: 共有シークレット → サーバ側セッションストアなしの HMAC トークンを httpOnly Cookie に。検証は HMAC 再計算 + iat の TTL チェックのみ
-tags: [auth, security, hmac, cookie]
+title: 認証 — platform 共通セッション Cookie の ES256 検証
+description: auth.app.esnir.net が発行する ES256 JWT を JWKS で検証するだけ。ログイン UI もセッションストアもアプリ側に持たない
+tags: [auth, security, jwt, jwks, cookie]
 timestamp: 2026-06-21T00:00:00Z
 ---
 
 # 仕組み
 
-- ログイン: `POST /api/login` に共有シークレット `secret` を送る。`secretMatches`（定数時間比較）が一致したら **Cookie を発行**（`backend/src/auth/index.ts`）。
-- トークン形式: `base64url(JSON{iat}) + "." + HMAC-SHA256(secret, payload)`（`backend/src/auth/session.ts`）。**サーバ側セッションストアは無い**（ステートレス）。
-- 検証 (`verifySession`): HMAC を再計算して定数時間比較 → `iat` が `sessionTtlSeconds`（既定 7 日）以内かを見るだけ。
-- Cookie 属性: `HttpOnly; Path=/; SameSite=Lax; Max-Age=<ttl>` ＋（本番）`Secure`。名前は `vp_session`（`AUTH_COOKIE_NAME`）。
-- ガード: `app.use('/api', auth.guard)`。**公開ルート (`/api/login`, `/api/logout`) はガードより前に登録**して素通しする（`app.ts:33-37`）。
+- OurTube は `*.app.esnir.net` の共通認証配下にあり、**ログイン/ログアウトのエンドポイントを持たない**。Cookie を発行するのは platform の `auth.app.esnir.net`。
+- Cookie 名は `session`（`AUTH_COOKIE_NAME`）、`Domain=.app.esnir.net` なのでサブドメインへ自動的に乗る。中身は ES256 署名の JWT。
+- ガード: `app.use('/api', auth.guard)`（`backend/src/auth/index.ts`）。`/api/*` に例外はない。
+- 検証 (`verifySession`, `backend/src/auth/session.ts`): ヘッダの `kid` で JWKS から公開鍵を引き、署名を検証し、`exp` を見る。**サーバ側セッションストアは無い**。
+- JWKS は `JWKS_URL`（既定 `https://auth.app.esnir.net/.well-known/jwks.json`）から取得し、`Map<kid, KeyObject>` として 300 秒キャッシュする。
 
 # 落とし穴・非自明な点
 
-- **`AUTH_BYPASS=1` だと `guard` は無条件 `next()`**（`index.ts:30`）。ローカルは常にこれ。本番で誤って付けると全公開になる。
-- **`APP_SECRET` 未設定だと `secret=''`**。`secretMatches` は `expected.length===0` で**常に false** を返すので、空シークレットでは誰もログインできない（フェイルクローズ。`session.ts:32-34`）。
-- ただし CDK 既定値 `CHANGE-ME-IN-DEPLOY` のままデプロイすると**その文字列で誰でも入れる**（`infra/bin/videoplayer.ts:25`、`docs/deploy.md` も警告）。
-- `cookieSecure` は `AUTH_COOKIE_SECURE !== 'false'` で**既定 true**。ローカル http では `local-env.sh` 経由ではなく、本番のみ CDK が `AUTH_COOKIE_SECURE='true'` を渡す。ローカル(`AUTH_BYPASS`)では Cookie 自体使わないので問題にならない。
-- フロントは 401 を受けると `/login?from=...` へ自動バウンス（`frontend/app/lib/api.ts:29-34`）。
+- **`alg` は `ES256` にハードコードして比較する**。攻撃者が選んだ `alg`（`none` 等）で別の検証経路に分岐させないための契約であり、緩めてはいけない。
+- **署名は raw IEEE-P1363（r‖s, 64 バイト）**。Node の既定は DER なので `dsaEncoding: 'ieee-p1363'` を渡さないと**無言で検証失敗**する。
+- **`kid` 単位でキャッシュする理由**は鍵ローテーション。移行中は 2 世代の鍵が同時に配られるので、単一鍵をキャッシュすると片方のセッションが落ちる。
+- **JWKS 取得失敗時は stale キャッシュで継続**する（platform 側の一時障害で既存セッションを落とさないため）。キャッシュを持たないコールドスタートでのみ throw し、`guard` が 500 を返す。
+- **`AUTH_BYPASS=1` だと `guard` は無条件 `next()`**。ローカルは常にこれ。本番で誤って付けると全公開になる。
+- フロントは 401 を受けると `auth.app.esnir.net/login?return_to=...` へバウンスする（`frontend/app/lib/api.ts`）。
 
 # エッジとの二段構え
 
-CloudFront の `ApiAuthGate` Function が **Cookie の存在だけ**を viewer-request 段で見て不在なら 403 を返す（HMAC 検証はしない＝認証ロジックを二重化しない）。本体の検証は常に Lambda 側。詳細は [[cloudfront-security]]。
+CloudFront の `ApiAuthGate` Function が **Cookie の存在だけ**を viewer-request 段で見て、不在なら 401 を返す（署名検証はしない＝認証ロジックを二重化しない。CloudFront Functions は JWKS の fetch も crypto も実行できない）。本体の検証は常に Lambda 側。詳細は [[cloudfront-security]]。
 
 # Citations
 
-[1] `backend/src/auth/session.ts`（HMAC / TTL / 定数時間比較）
-[2] `backend/src/auth/index.ts`（guard / login / logout / Cookie 属性）
-[3] `infra/bin/videoplayer.ts:25`（`CHANGE-ME-IN-DEPLOY` 既定値）
+[1] `backend/src/auth/session.ts`（JWKS キャッシュ / ES256 固定 / IEEE-P1363）
+[2] `backend/src/auth/index.ts`（guard / Cookie 読み取り / AUTH_BYPASS）
+[3] `backend/src/config.ts`（`AUTH_COOKIE_NAME` / `JWKS_URL` の既定値）

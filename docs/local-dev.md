@@ -64,8 +64,8 @@ cd infra && npm run synth                        # CDK 検証
 | `DYNAMODB_ENDPOINT` / `DYNAMODB_TABLE` | DynamoDB Local |
 | `CONVERTER` | `local`（ffmpeg） / `mediaconvert` |
 | `AUTH_BYPASS` | `1` で認証スキップ |
-| `APP_SECRET` | 本番の共有シークレット |
-| `GENAI_PROVIDER` | `lmstudio` / `openai` / `bedrock` |
+| `AUTH_COOKIE_NAME` / `JWKS_URL` | platform セッション Cookie 名（既定 `session`）と検証鍵 JWKS の URL（既定 `https://auth.app.esnir.net/.well-known/jwks.json`） |
+| `GENAI_PROVIDER` | `lmstudio` / `openai` / `mantle` / `bedrock` |
 | `BEDROCK_MODEL_ID` | Bedrock モデル/推論プロファイル |
 
 ## トラブルシュート

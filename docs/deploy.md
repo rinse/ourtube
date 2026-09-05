@@ -8,7 +8,8 @@
   をアセットとして要求 → **未ビルドだと synth/deploy が失敗**。
 - API/Conversion Lambda は esbuild で `backend/src` をバンドル → **backend の依存が必要**。
 
-認証は platform 共通セッション Cookie（ES256 JWT）で、ローカルシークレットは不要。
+認証は platform（`auth.app.esnir.net`）が発行する共通セッション Cookie を JWKS で検証する
+だけなので、デプロイ時にアプリへ渡すシークレットはない。
 
 ## 0. 一度だけ必要な準備（手動）
 
@@ -40,14 +41,17 @@ export BEDROCK_MODEL_ID='apac.anthropic.claude-sonnet-4-20250514-v1:0'  # リー
 bash scripts/deploy.sh
 ```
 
-`scripts/deploy.sh` の中身（手で追う場合）:
+手で追う場合の等価コマンド:
 
 ```bash
 cd backend  && npm ci
 cd frontend && npm ci && NEXT_EXPORT=true npm run build   # out/ を生成
 cd infra    && npm ci && npx cdk deploy --all --require-approval never
-# OurtubeCertStack（us-east-1）と VideoplayerStack（ap-northeast-1）の 2 スタックをデプロイ
 ```
+
+`OurtubeCertStack`（us-east-1・ACM 証明書）と `VideoplayerStack`（ap-northeast-1）の
+2 スタック構成なので、スタック名を挙げない場合は `--all` が必要（CDK は対象が
+一意に決まらないとエラーで止まる）。
 
 ## 2. GitHub Actions 経由（推奨・自動デプロイ）
 
@@ -143,11 +147,14 @@ concurrency:
 
 | 出力 | 用途 |
 |---|---|
-| `SiteUrl` | CloudFront ドメイン（カスタムドメイン前の確認用） |
+| `SiteUrl` | CloudFront ドメイン（カスタムドメインを介さない確認用） |
+| `CustomDomainUrl` | カスタムドメインの URL（`https://ourtube.app.esnir.net`） |
 | `ApiFunctionUrl` | API Lambda Function URL（直接叩く用、通常は不要） |
 | `StorageBucketName` | 動画 S3 バケット |
 | `SiteBucketName` | 静的 SPA バケット |
 | `TableName` | DynamoDB テーブル |
+
+`OurtubeCertStack` は証明書 ARN を `CertificateArn` として出力する。
 
 ## 6. 既知の注意点
 
@@ -164,6 +171,6 @@ concurrency:
 ## 7. 撤去
 
 ```bash
-cd infra && npx cdk destroy
+cd infra && npx cdk destroy --all
 ```
 S3 バケットと DynamoDB テーブルは `RemovalPolicy.RETAIN`。残ったリソースは手動削除する。

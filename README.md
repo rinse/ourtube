@@ -11,9 +11,9 @@ AWS サーバーレス構成（単一 API Lambda + S3 + DynamoDB + MediaConvert 
 - **DynamoDB シングルテーブル** にメタデータ（[docs/dynamodb-schema.md](docs/dynamodb-schema.md)）
 - **MediaConvert** で HLS 変換（完了は EventBridge → Conversion Lambda）
 - **Bedrock** でタイトルサジェスト
-- **認証は共有シークレット → httpOnly セッション Cookie**（個人利用、自分だけ）
+- **認証は platform 共通のセッション Cookie**（`*.app.esnir.net` の ES256 JWT を JWKS で検証）
 - **CloudFront + S3** で静的 SPA（Next.js `output: export`）を配信
-- **CDK (TypeScript)** で IaC、**GitHub Actions** で CI と人間承認デプロイ
+- **CDK (TypeScript)** で IaC、**GitHub Actions** で CI と自動デプロイ
 
 詳細は [docs/architecture.md](docs/architecture.md) を参照。
 
@@ -39,24 +39,25 @@ cd infra    && npm run synth
 
 ## デプロイ
 
-**`cdk deploy` 単体ではデプロイされない**（先に静的フロントのビルド・ブートストラップ・
-シークレット指定が必要）。完全な手順は [docs/deploy.md](docs/deploy.md)。
+**`cdk deploy` 単体ではデプロイされない**（先に静的フロントのビルドとブートストラップが
+必要）。完全な手順は [docs/deploy.md](docs/deploy.md)。
 
-- 手動: `export APP_SECRET=... && bash scripts/deploy.sh`
-- 推奨（自動）: `main` への push（PR マージ）で GitHub Actions の **Deploy** が自動起動し、
-  承認なしで `cdk deploy`。任意ブランチは `workflow_dispatch` で起動。
+- 手動: `bash scripts/deploy.sh`
+- 推奨（自動）: `main` への push（PR マージ）で GitHub Actions の **Deploy** が自動起動する。
+  backend/frontend だけの変更は承認なしで `cdk deploy`、`infra/**` とワークフローの変更、
+  および `workflow_dispatch` での起動は人間の承認を挟む。
 
 事前に一度だけ: `cdk bootstrap` / Bedrock モデルアクセス有効化 /
-（Actions 経由なら）Secrets `AWS_DEPLOY_ROLE_ARN`,`APP_SECRET` と Variables `AWS_REGION`,`BEDROCK_MODEL_ID`。
+（Actions 経由なら）Secrets `AWS_DEPLOY_ROLE_ARN` と Variables `AWS_REGION`,`BEDROCK_MODEL_ID`、
+Environment `production` と `production-infra`。
 
-カスタムドメイン（`ourtube.esnir.net`）の適用手順は [docs/custom-domain.md](docs/custom-domain.md)。
+カスタムドメイン（`ourtube.app.esnir.net`）の構成は [docs/custom-domain.md](docs/custom-domain.md)。
 CloudFront Geo restriction / 認証 / Lambda URL の防御構成は [docs/security.md](docs/security.md)。
 
 ## API エンドポイント
 
 | メソッド | パス | 説明 |
 |---|---|---|
-| POST | `/api/login` / `/api/logout` | 認証（公開） |
 | GET | `/api/videos` | 一覧 |
 | GET | `/api/videos/:id` | メタデータ |
 | GET | `/api/videos/:id/index.m3u8` | HLS マニフェスト（無改変で配信、相対パス） |

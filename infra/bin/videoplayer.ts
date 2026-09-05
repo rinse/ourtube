@@ -17,9 +17,9 @@ const region = process.env.CDK_DEFAULT_REGION ?? 'ap-northeast-1';
 // Access control: OurTube sits behind the shared `*.app.esnir.net` auth. The
 // edge redirects unauthenticated viewers to auth.app.esnir.net/login and gates
 // /api/* on the shared `session` cookie; the API Lambda verifies that cookie
-// (ES256) against the platform JWKS. CloudFront-native geo restriction (country
-// allowlist, free) and the API Lambda's reserved concurrency cap cost. The old
-// CloudFront-scoped WAF stack (us-east-1) was removed to cut its ~$10/mo floor.
+// (ES256) against the platform JWKS. Cost is capped by CloudFront-native geo
+// restriction (country allowlist, free) and the API Lambda's reserved
+// concurrency — no WAF, whose ~$10/mo floor buys little for a single user.
 // See docs/security.md.
 
 // ACM certificates for CloudFront must live in us-east-1. This stack owns the

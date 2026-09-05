@@ -40,7 +40,7 @@ YouTube ライクな個人用動画配信サービスを AWS サーバーレス�
 | メタデータ | DynamoDB シングルテーブル | DynamoDB Local | `MetadataStore` / `DynamoMetadataStore` |
 | ストレージ | S3 | MinIO（S3 SDK + endpoint） | `VideoStorage` / `S3VideoStorage` |
 | 変換 | MediaConvert（ジョブ）+ Conversion Lambda（完了） | ffmpeg（同プロセス・バックグラウンド） | `Converter` / `MediaConvertConverter` ・ `LocalFfmpegConverter` |
-| AI | Bedrock | LM Studio | `GenAI` / `BedrockGenAI` ・ `LMStudioGenAI` ・ `OpenAIGenAI` |
+| AI | Bedrock | LM Studio | `GenAI` / `BedrockGenAI` ・ `OpenAIGenAI` ・ `MantleGenAI` ・ `LMStudioGenAI`（`GENAI_PROVIDER` で選択） |
 | 認証 | platform ES256 JWT（`session` Cookie、JWKS 検証） | `AUTH_BYPASS=1` | `src/auth/` |
 
 ## アップロード〜再生のフロー
@@ -52,15 +52,15 @@ YouTube ライクな個人用動画配信サービスを AWS サーバーレス�
 5. MediaConvert 完了 → EventBridge → Conversion Lambda が `index.m3u8` を確認、サムネ名を正規化し status を `ready` に。
 6. 再生は `GET /api/videos/<id>/index.m3u8`：マニフェストは**無改変（相対パスのまま）**で返す。ブラウザは各セグメント行を `GET /api/videos/<id>/<segment>` として再リクエストし、API がリクエスト時に presign した S3/MinIO の GET URL へ **302 リダイレクト**する。セグメント本体（バイト列）はそのリダイレクト先からブラウザが直接取得。
 
-## 主要な設計判断（計画合意 + 実装時の確定）
+## 主要な設計判断
 
 - **動画変換は MediaConvert**。5GB 級でも時間制限なく処理でき、ffmpeg 運用が不要。ローカルは既存 ffmpeg をスタンドインに流用。
-- **メタデータは DynamoDB シングルテーブル**（[dynamodb-schema.md](./dynamodb-schema.md)）。SQLite の 0/1→boolean 強制は不要なため撤去。
+- **メタデータは DynamoDB シングルテーブル**（[dynamodb-schema.md](./dynamodb-schema.md)）。Video と Playlist が同一テーブル・同一 GSI1 をパーティション値で分離して共有する。
 - **認証は platform 共通セッション Cookie**（ES256 JWT、`Domain=.app.esnir.net`）。`/api/*` をガード。未認証アクセスは `auth.app.esnir.net/login` にリダイレクト。ローカルは `AUTH_BYPASS`。
-- **再生は単一パス**：マニフェストは無改変で配信し、セグメントは都度リクエスト時に presign して 302 リダイレクト。CloudFront 署名 Cookie/OAC-for-videos は採用せず（local/prod 二重パスとキー管理を避けるため）。CloudFront は静的 SPA 配信と `/api/*` のプロキシ（キャッシュ無効・CACHING_DISABLED）に限定。
-- **変換トリガは S3 イベントではなく `complete` 呼び出し**。インフラを簡素化し local/prod を統一。堅牢性は Conversion Lambda（完了イベント）側で担保。
+- **再生は単一パス**：マニフェストは無改変で配信し、セグメントは都度リクエスト時に presign して 302 リダイレクト。CloudFront 署名 Cookie/OAC-for-videos は採用せず（local/prod 二重パスとキー管理を避けるため）。CloudFront の役割は静的 SPA の配信と `/api/*` のプロキシに限り、`/api/*` はキャッシュ無効（CACHING_DISABLED）。例外はサムネイル（`api/videos/*/thumbnail.jpg`）で、内容が動画 ID に対して不変なので専用 behavior でエッジキャッシュし、一覧ページの一斉取得を Lambda に通さない。
+- **変換トリガはクライアントの `complete` 呼び出し**。インフラを簡素化し local/prod を統一。堅牢性は Conversion Lambda（完了イベント）側で担保。
 - **静的 SPA は S3 + CloudFront**。Next.js を `output: 'export'` で静的化。
-- **IaC は AWS CDK (TypeScript)**、デプロイは GitHub Actions が `main` への push で自動起動（`workflow_dispatch` も可）。承認ゲートなし。
+- **IaC は AWS CDK (TypeScript)**、デプロイは GitHub Actions が `main` への push で自動起動（`workflow_dispatch` も可）。アプリ変更は承認なしで流し、`infra/**` とワークフローの変更、および手動起動には人間の承認を挟む（[deploy.md](./deploy.md)）。
 
 ## ディレクトリ
 

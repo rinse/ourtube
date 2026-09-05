@@ -16,8 +16,8 @@ import { THUMBNAIL_FILENAME, getMimeType } from '../../../media/ffmpeg';
  *  - the thumbnail is streamed through (small).
  *
  * Tradeoff: each segment costs one extra 302 round-trip to the API. For a
- * single-user service that is negligible, and it removes the expiry ceiling
- * that presigning segments inside the manifest used to impose.
+ * single-user service that is negligible, and it keeps every presign TTL scoped
+ * to a single segment fetch rather than to the whole playback session.
  */
 export type VideoFile =
   | { status: 'ready'; kind: 'manifest'; body: string; mime: string }
@@ -48,8 +48,7 @@ export async function getVideoFile(
   if (filename.endsWith('.m3u8')) {
     // Serve the manifest verbatim: segment lines stay relative so the browser
     // re-requests each through GET /api/videos/:id/:segment, which presigns at
-    // request time. This removes the playback-wide expiry that came from
-    // baking presigned (TTL-bound) URLs into the manifest.
+    // request time.
     const body = await deps.storage.getText(videoId, filename);
     return { status: 'ready', kind: 'manifest', body, mime: getMimeType(filename) };
   }

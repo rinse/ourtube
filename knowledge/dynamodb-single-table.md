@@ -6,7 +6,7 @@ tags: [dynamodb, single-table, playlist, gsi]
 timestamp: 2026-06-21T00:00:00Z
 ---
 
-# テーブル形状（docs/dynamodb-schema.md は概ね正確）
+# テーブル形状
 
 1 テーブル `videoplayer`（`DYNAMODB_TABLE`）。エンティティは Video と Playlist。
 
@@ -32,7 +32,7 @@ timestamp: 2026-06-21T00:00:00Z
 - 純ロジックは `backend/src/playlist/Playlist.ts`（`addMember`/`removeMember`/`reorderMembers`）でストレージ非依存・テスト可能。
 - **dangling ref を許容**: 削除済み動画 ID が `videoIds` に残り得る。除去はせず、**読み取り時（`GET /api/playlists/:id`）に各 ID を Video テーブルで解決し欠損はスキップ**表示（`api/playlists/get.ts`、N+1 だが個人規模で許容）。
 - **reorder は "重複なし部分集合" を要求**（permutation ではない）。UI には解決済み動画しか出ないので dangling ref はペイロードに含まれない。検証後、ペイロード外の既存 ID（dangling ref）は**末尾に温存**（`Playlist.ts` `reorderMembers`、不正は `IllegalArgumentError`→400）。
-- メンバー操作は read-modify-write（`get`→変換→条件付き `UpdateCommand`）。`get` 時 `videoIds ?? []` で旧アイテム欠損も吸収（`DynamoPlaylistStore.ts:83,95`）。
+- メンバー操作は read-modify-write（`get`→変換→条件付き `UpdateCommand`）。`get` 時 `videoIds ?? []` で旧アイテム欠損も吸収（`DynamoPlaylistStore.ts`）。
 
 # 関連
 
@@ -42,4 +42,4 @@ timestamp: 2026-06-21T00:00:00Z
 
 [1] `backend/src/metadata/DynamoMetadataStore.ts`, `backend/src/playlist/DynamoPlaylistStore.ts`
 [2] `backend/src/playlist/Playlist.ts`（reorder の subset 意味論）
-[3] `docs/dynamodb-schema.md`（このドキュメントは現行と整合）
+[3] `docs/dynamodb-schema.md`（キー構成とアクセスパターン）

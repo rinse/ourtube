@@ -16,10 +16,11 @@ timestamp: 2026-06-21T00:00:00Z
 | env | 既定 | 効果 |
 |---|---|---|
 | `CONVERTER` | `local` | `local`=ffmpeg / `mediaconvert`=ジョブ投入。CDK は両 Lambda に `mediaconvert` を渡す |
-| `GENAI_PROVIDER` | `OPENAI_API_KEY` あれば `openai`、無ければ `lmstudio` | `bedrock`/`openai`/`lmstudio` |
+| `GENAI_PROVIDER` | `OPENAI_API_KEY` あれば `openai`、無ければ `lmstudio` | `bedrock`/`openai`/`mantle`/`lmstudio` |
 | `AUTH_BYPASS` | false | `1`/`true` で認証全スキップ |
-| `APP_SECRET` | `''`（空） | 空だとログイン不可（フェイルクローズ）。[[auth-model]] |
-| `AUTH_COOKIE_SECURE` | `!== 'false'`（=true） | ローカル http では実質 AUTH_BYPASS 下なので無関係 |
+| `AUTH_COOKIE_NAME` | `session` | platform 共通セッション Cookie の名前。[[auth-model]] |
+| `JWKS_URL` | `https://auth.app.esnir.net/.well-known/jwks.json` | ES256 署名の検証鍵の取得先 |
+| `MANTLE_API_KEY` / `MANTLE_REGION` / `MANTLE_MODEL` | なし / `us-east-1` / `google.gemma-4-e2b` | `GENAI_PROVIDER=mantle` のとき |
 | `S3_ENDPOINT` | なし | 設定すると MinIO 用。`forcePathStyle` は `S3_ENDPOINT` 有無で自動 true |
 | `S3_BUCKET_NAME` | `ourtube-videostorage` | 本番は CDK が実バケット名注入。ローカルは `videoplayer-local` |
 | `DYNAMODB_ENDPOINT` / `DYNAMODB_TABLE` | なし / `videoplayer` | DynamoDB Local 用 endpoint |
@@ -29,10 +30,10 @@ timestamp: 2026-06-21T00:00:00Z
 
 # 非自明な点
 
-- **`createDependencies` は converter を eager に構築**する。`MediaConvertConverter` は `MEDIACONVERT_ROLE_ARN` 必須なので、Conversion Lambda は変換ジョブを投入しないのに env で role を渡している（`videoplayer-stack.ts:146-149` のコメント参照）。
+- **`createDependencies` は converter を eager に構築**する。`MediaConvertConverter` は `MEDIACONVERT_ROLE_ARN` 必須なので、Conversion Lambda は変換ジョブを投入しないのに env で role を渡している（`videoplayer-stack.ts` の該当コメント参照）。
 - メタデータストアとプレイリストストアは**同一 `config.metadata.tableName`** を別インスタンスで共有（[[dynamodb-single-table]]）。
 - ローカル既定値の出所は `scripts/local-env.sh`（config.ts の既定とは別物。例: バケットは `videoplayer-local`）。[[local-dev-environment]]。
-- `server.ts` は起動時に config を**シークレットをマスクして**ログ出力する。
+- `server.ts`（ローカル専用エントリポイント）は起動時に `AppConfig` を丸ごと JSON でログ出力する。`genai.openai.apiKey` / `genai.mantle.apiKey` もそのまま出る。
 
 # Citations
 

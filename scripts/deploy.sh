@@ -20,4 +20,4 @@ echo "==> infra deps"
 ( cd infra && npm ci )
 
 echo "==> cdk deploy (region: $CDK_DEFAULT_REGION)"
-( cd infra && npx cdk deploy --require-approval never )
+( cd infra && npx cdk deploy --all --require-approval never )

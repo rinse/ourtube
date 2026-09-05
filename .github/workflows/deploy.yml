@@ -92,9 +92,9 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: CDK deploy
-        # Single stack (VideoplayerStack). --all is harmless and future-proof.
-        # WAF was removed; access control is geo restriction + auth + reserved
-        # concurrency. See docs/security.md.
+        # Two stacks (OurtubeCertStack in us-east-1 + VideoplayerStack), so
+        # --all is required to select both. Access control is geo restriction +
+        # auth + reserved concurrency. See docs/security.md.
         run: npx cdk deploy --all --require-approval never
         working-directory: infra
         env:

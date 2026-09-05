@@ -4,10 +4,10 @@
 
 ## Knowledge
 
-リポジトリ全体を読まないと分からない知見と、ドキュメント/実装の乖離を
-[`knowledge/index.md`](knowledge/index.md) にまとめてある（OKF bundle）。
-アーキテクチャ・配信経路・認証・変換・デプロイの理解、および README/docs の陳腐化箇所の
-確認に使うこと。特に HLS 配信とセキュリティは docs より knowledge の記述が正しい。
+リポジトリ全体を読まないと分からない知見を [`knowledge/index.md`](knowledge/index.md)
+にまとめてある（OKF bundle）。アーキテクチャ・配信経路・認証・変換・デプロイを把握する
+ときの入口として使うこと。`docs/` が「何をどう使うか」を書くのに対し、`knowledge/` は
+「なぜそうなっているか」と踏みやすい落とし穴を書く。
 
 ## 自律開発エージェント
 
