@@ -8,12 +8,12 @@ export function MantleGenAI(metadata: MetadataStore, apiKey: string, region: str
   console.log('MantleGenAI using baseURL:', baseURL, 'model:', model);
   const openai = new OpenAI({ baseURL, apiKey });
   return {
-    suggestVideoTitle: async (filename: string) => {
+    suggestVideoTitle: async (filename: string, playlistTitles: string[]) => {
       const completion = await openai.chat.completions.create({
         model,
         messages: [
           { role: 'system', content: TITLE_SYSTEM_PROMPT },
-          { role: 'user', content: await buildTitleUserPrompt(metadata, filename) },
+          { role: 'user', content: await buildTitleUserPrompt(metadata, filename, playlistTitles) },
         ],
         temperature: 0.7,
         max_tokens: 1000,

@@ -6,7 +6,7 @@ import { BedrockGenAI } from './Bedrock';
 import { MantleGenAI } from './Mantle';
 
 export type GenAI = {
-  suggestVideoTitle: (filename: string) => Promise<string | undefined>;
+  suggestVideoTitle: (filename: string, playlistTitles: string[]) => Promise<string | undefined>;
 };
 
 export function createGenAI(deps: { metadata: MetadataStore; config: AppConfig }): GenAI {

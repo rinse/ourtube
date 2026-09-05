@@ -15,8 +15,8 @@ export function BedrockGenAI(metadata: MetadataStore, region: string, modelId: s
   console.log('BedrockGenAI using region:', region, 'model:', modelId);
   const client = new BedrockRuntimeClient({ region });
   return {
-    suggestVideoTitle: async (filename: string) => {
-      const userPrompt = await buildTitleUserPrompt(metadata, filename);
+    suggestVideoTitle: async (filename: string, playlistTitles: string[]) => {
+      const userPrompt = await buildTitleUserPrompt(metadata, filename, playlistTitles);
       const res = await client.send(new ConverseCommand({
         modelId,
         system: [{ text: TITLE_SYSTEM_PROMPT }],

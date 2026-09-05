@@ -237,7 +237,7 @@ function VideoDetail({ videoId, playlistId }: { videoId: string; playlistId?: st
       const response = await apiFetch('/api/suggest-video-title', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName: videoInfo.title }),
+        body: JSON.stringify({ fileName: videoInfo.title, videoId: videoInfo.id }),
       });
       const data = await response.json();
       if (data.suggestedTitle) {

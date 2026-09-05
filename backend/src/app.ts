@@ -182,13 +182,17 @@ export function createApp(deps: Dependencies): Express {
   });
 
   app.post('/api/suggest-video-title', async (req: Request, res: Response) => {
-    const { fileName } = req.body ?? {};
+    const { fileName, videoId } = req.body ?? {};
     if (!fileName || typeof fileName !== 'string') {
       res.status(400).json({ error: 'Invalid input', message: 'fileName is required in request body' } satisfies ApiErrorResponse);
       return;
     }
+    if (videoId !== undefined && (typeof videoId !== 'string' || videoId === '')) {
+      res.status(400).json({ error: 'Invalid input', message: 'videoId must be a non-empty string' } satisfies ApiErrorResponse);
+      return;
+    }
     try {
-      const title = await suggetVideoTitle(deps, fileName);
+      const title = await suggetVideoTitle(deps, fileName, videoId);
       res.json({ suggestedTitle: title } satisfies SuggestVideoTitleResponse);
     } catch (error) {
       if (error instanceof IllegalArgumentError) {
