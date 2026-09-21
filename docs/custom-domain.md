@@ -44,9 +44,9 @@ curl -I https://ourtube.app.esnir.net # 未ログインなら 302 → auth.app.e
 - ドメイン名・サブドメイン・ログイン URL は `infra/lib/videoplayer-stack.ts` の定数
   （`DELEGATED_ZONE` / `APP_SUBDOMAIN`）と `infra/lib/certificate-stack.ts` に同じ値で
   置いてある。変えるときは両方を揃える。
-- 証明書を渡さずに `VideoplayerStack` だけを synth すると、CloudFront は
-  `*.cloudfront.net` の既定ドメインになる。ルックアップ不要の synth/スモークテスト用で、
-  この状態では `Domain=.app.esnir.net` のセッション Cookie が届かず認証がループする。
+- 証明書は `VideoplayerStack` の必須 prop。`*.cloudfront.net` の既定ドメインでは
+  `Domain=.app.esnir.net` のセッション Cookie が届かず認証がループするため、カスタム
+  ドメインなしで動かす構成は用意していない。
 - フロントは同一オリジンの相対パス `/api/*` を叩くため、ドメイン側の変更でフロントを
   再ビルドする必要はない。
 - アクセス制御（Geo restriction / エッジの Cookie ゲート / Lambda の JWKS 検証 / 予約
