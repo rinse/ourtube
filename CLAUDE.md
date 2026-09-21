@@ -17,8 +17,13 @@ fast development. See `docs/architecture.md` for the full picture.
   (`backend/src/metadata/`). Schema: `docs/dynamodb-schema.md`. Local: DynamoDB Local.
 - **Storage**: S3 via `VideoStorage` / `S3VideoStorage` (`backend/src/storage/`),
   pure I/O + presign. Local: MinIO (S3 SDK + custom endpoint).
-- **Conversion**: `Converter` abstraction. Prod = `MediaConvertConverter` (submits a
-  job) + `backend/src/lambda/conversion.ts` (EventBridge completion → `finalize`).
+- **Conversion**: `Converter` abstraction. Prod = `EcsFfmpegConverter` (runs one
+  Fargate task per video; the task entrypoint `backend/src/task/convert.ts` is
+  `LocalFfmpegConverter` itself and finalizes metadata inline, so
+  `backend/src/lambda/conversion.ts` only catches tasks that crashed first —
+  EventBridge `ECS Task State Change` → `finalize`). `MediaConvertConverter` stays
+  wired as the rollback lever (`CONVERTER=mediaconvert`); MediaConvert bills HD
+  output at 2x its duration, which is why conversion moved off it.
   Local = `LocalFfmpegConverter` (ffmpeg in-process, background).
 - **AI**: `GenAI`, selected by `GENAI_PROVIDER`: `BedrockGenAI` (prod) / `OpenAIGenAI` /
   `MantleGenAI` (AWS Bedrock Mantle) / `LMStudioGenAI` (local default).
