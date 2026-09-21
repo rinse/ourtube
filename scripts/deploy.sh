@@ -8,7 +8,8 @@ cd "$(dirname "$0")/.."
 # Auth is the shared *.app.esnir.net session — no local secret. The ACM cert
 # (OurtubeCertStack, us-east-1) is CDK-managed; no CERTIFICATE_ARN env var
 # needed. Route53 fromLookup runs at synth time so AWS credentials are required.
-export CDK_DEFAULT_REGION="${CDK_DEFAULT_REGION:-${AWS_REGION:-ap-northeast-1}}"
+# The deploy region is pinned in infra/bin/videoplayer.ts — setting
+# CDK_DEFAULT_REGION here would do nothing (the CDK CLI overwrites it).
 
 echo "==> backend deps"
 ( cd backend && npm ci )
@@ -19,5 +20,5 @@ echo "==> build static frontend (out/)"
 echo "==> infra deps"
 ( cd infra && npm ci )
 
-echo "==> cdk deploy (region: $CDK_DEFAULT_REGION)"
+echo "==> cdk deploy"
 ( cd infra && npx cdk deploy --all --require-approval never )

@@ -36,7 +36,6 @@
 順序が重要。ワンショットスクリプトを用意済み:
 
 ```bash
-export CDK_DEFAULT_REGION='ap-northeast-1'
 export BEDROCK_MODEL_ID='apac.anthropic.claude-sonnet-4-20250514-v1:0'  # リージョンに合わせる
 bash scripts/deploy.sh
 ```
@@ -170,6 +169,10 @@ concurrency:
 - **CDK synth（CI）**: `OurtubeCertStack` が `fromLookup` を使うため Route53 API を叩く。
   CI には `infra/cdk.context.json` のキャッシュを commit しておき、`CDK_DEFAULT_ACCOUNT`
   を実アカウント ID に設定することで credentials なしで synth できる。
+- **リージョンは `infra/bin/videoplayer.ts` に直書き**。CDK CLI は app の子プロセスの
+  `CDK_DEFAULT_REGION` を「CLI 自身が AWS 設定チェーンから解決したリージョン」で上書き
+  するため、環境変数でリージョンを渡すことはできない。credentials も `AWS_REGION` も無い
+  CI では `us-east-1` に解決され、スタックごと別リージョンとして synth されてしまう。
 
 ## 7. 撤去
 

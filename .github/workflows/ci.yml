@@ -65,5 +65,7 @@ jobs:
           # fromLookup (Route53 zone) requires a concrete account at synth time so
           # the context key in cdk.context.json (committed to the repo) matches.
           # Account IDs are not secrets; this value appears in resource ARNs etc.
+          # There is deliberately no CDK_DEFAULT_REGION here: the CDK CLI
+          # overwrites it in the app subprocess, so the region is pinned in
+          # infra/bin/videoplayer.ts instead.
           CDK_DEFAULT_ACCOUNT: '324175221232'
-          CDK_DEFAULT_REGION: ap-northeast-1

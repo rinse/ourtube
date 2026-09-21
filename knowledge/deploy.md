@@ -24,7 +24,7 @@ Route 53 の A/AAAA エイリアスは `VideoplayerStack` が作る。ゾーン 
 
 # 2 つの経路
 
-- **手動**: `export CDK_DEFAULT_REGION=... BEDROCK_MODEL_ID=...; bash scripts/deploy.sh`。アプリに渡すシークレットはない（認証は platform の共通セッション Cookie。[[auth-model]]）。
+- **手動**: `export BEDROCK_MODEL_ID=...; bash scripts/deploy.sh`。アプリに渡すシークレットはない（認証は platform の共通セッション Cookie。[[auth-model]]）。
 - **自動**: `main` への push で GitHub Actions **Deploy** が起動 → OIDC で AssumeRole → `cdk deploy --all`。
 
 # 承認ゲート（Environment 切替）

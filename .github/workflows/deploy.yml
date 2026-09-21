@@ -98,7 +98,8 @@ jobs:
         run: npx cdk deploy --all --require-approval never
         working-directory: infra
         env:
-          CDK_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+          # No CDK_DEFAULT_REGION: the CDK CLI overwrites it in the app
+          # subprocess, so the region is pinned in infra/bin/videoplayer.ts.
           BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
           # The ACM cert (OurtubeCertStack, us-east-1) and Route53 alias records
           # are fully CDK-managed. The cert ARN is passed to VideoplayerStack via

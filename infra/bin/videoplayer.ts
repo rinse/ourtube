@@ -12,7 +12,14 @@ const app = new cdk.App();
 cdk.Tags.of(app).add('Project', 'OurTube');
 
 const account = process.env.CDK_DEFAULT_ACCOUNT;
-const region = process.env.CDK_DEFAULT_REGION ?? 'ap-northeast-1';
+// The region is written here, not read from CDK_DEFAULT_REGION: the CDK CLI
+// overwrites that variable in the app subprocess with whatever region *it*
+// resolved from the AWS config chain. With no credentials and no AWS_REGION
+// (a credential-less `cdk synth`, i.e. CI) that resolves to us-east-1, which
+// silently moved this whole stack to us-east-1 — the cached availability-zones
+// context no longer matched, so synth tried to look them up and failed. This
+// app is single-region; say so.
+const region = 'ap-northeast-1';
 
 // Access control: OurTube sits behind the shared `*.app.esnir.net` auth. The
 // edge redirects unauthenticated viewers to auth.app.esnir.net/login and gates
