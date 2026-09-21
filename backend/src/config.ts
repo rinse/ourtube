@@ -2,7 +2,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 
-export type ConverterType = 'local' | 'mediaconvert';
+export type ConverterType = 'local' | 'mediaconvert' | 'ecs';
 export type GenAIProvider = 'bedrock' | 'openai' | 'mantle' | 'lmstudio';
 
 export type AppConfig = {
@@ -34,6 +34,13 @@ export type AppConfig = {
       /** Account-specific MediaConvert endpoint. */
       endpoint?: string;
     };
+    ecs: {
+      clusterArn?: string;
+      taskDefinitionArn?: string;
+      subnetIds: string[];
+      securityGroupIds: string[];
+      containerName: string;
+    };
   };
   auth: {
     /** When true, all auth checks are skipped (local dev). */
@@ -59,6 +66,10 @@ function bool(value: string | undefined, fallback = false): boolean {
 
 function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true });
+}
+
+function splitList(value: string | undefined): string[] {
+  return (value ?? '').split(',').map((s) => s.trim()).filter((s) => s.length > 0);
 }
 
 export function createAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -90,6 +101,13 @@ export function createAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig
         roleArn: env.MEDIACONVERT_ROLE_ARN,
         queueArn: env.MEDIACONVERT_QUEUE_ARN,
         endpoint: env.MEDIACONVERT_ENDPOINT,
+      },
+      ecs: {
+        clusterArn: env.ECS_CLUSTER_ARN,
+        taskDefinitionArn: env.ECS_TASK_DEFINITION_ARN,
+        subnetIds: splitList(env.ECS_SUBNET_IDS),
+        securityGroupIds: splitList(env.ECS_SECURITY_GROUP_IDS),
+        containerName: env.ECS_CONTAINER_NAME ?? 'converter',
       },
     },
     auth: {

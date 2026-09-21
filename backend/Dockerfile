@@ -1,3 +1,5 @@
+# Fargate conversion task image. Entrypoint is src/task/convert.ts, which
+# runs LocalFfmpegConverter against one video (VIDEO_ID env var) and exits.
 FROM node:22-alpine AS builder
 
 WORKDIR /app
@@ -5,8 +7,7 @@ WORKDIR /app
 COPY package*.json tsconfig.json ./
 COPY src ./src
 
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci \
+RUN npm ci \
  && npm run build
 
 
@@ -17,19 +18,12 @@ WORKDIR /app
 RUN apk add --no-cache ffmpeg
 
 COPY --chown=node:node package*.json ./
-COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+COPY --from=builder --chown=node:node /app/dist ./dist
 
-ENV WORK_DIR=.workdir
+ENV TMP_DIR=/tmp/videoplayer
 
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --omit=dev \
- && npm cache clean --force \
- && mkdir -p .workdir/uploads \
- && mkdir -p .workdir/conversion \
- && chown -R node:node .workdir \
- && chmod 775 .workdir \
- && chmod 775 .workdir/uploads \
- && chmod 775 .workdir/conversion
+RUN npm ci --omit=dev \
+ && npm cache clean --force
 
 USER node
-CMD ["node", "dist/app.js"]
+CMD ["node", "dist/task/convert.js"]

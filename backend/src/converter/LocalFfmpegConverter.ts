@@ -10,9 +10,17 @@ const fsMkdir = promisify(fs.mkdir);
 const fsRm = promisify(fs.rm);
 
 /**
- * Local stand-in for MediaConvert: downloads the source, runs ffmpeg to produce
- * HLS + a thumbnail, publishes outputs to storage, and finalizes metadata
- * inline. Used for `docker compose` / fast local dev.
+ * Downloads the source, runs ffmpeg to produce HLS + a thumbnail, publishes
+ * outputs to storage, and finalizes metadata (status / thumbnail / duration)
+ * inline. Two uses:
+ *   - Local dev (`docker compose`): `startConversion` backgrounds `run` with
+ *     `setImmediate` and returns immediately, same shape as the other
+ *     converters' `startConversion`.
+ *   - Production, as the entrypoint of the ECS Fargate conversion task
+ *     (src/task/convert.ts): `run` is awaited directly. Because it finalizes
+ *     metadata itself, the Fargate path needs no completion event on the
+ *     success path (unlike MediaConvertConverter) — only a crash safety net,
+ *     see src/conversion/ecsTaskEvent.ts.
  */
 export class LocalFfmpegConverter implements Converter {
   constructor(
@@ -22,7 +30,7 @@ export class LocalFfmpegConverter implements Converter {
 
   async startConversion(videoId: string): Promise<ConversionResult> {
     setImmediate(() => {
-      this.process(videoId).catch((error) => {
+      this.run(videoId).catch((error) => {
         console.error(`[${videoId}] background conversion crashed:`, error);
       });
     });
@@ -33,7 +41,7 @@ export class LocalFfmpegConverter implements Converter {
     // Local converter has no external job to cancel.
   }
 
-  private async process(videoId: string): Promise<void> {
+  async run(videoId: string): Promise<void> {
     const workDir = path.join(this.tmpDir, videoId);
     const sourcePath = path.join(workDir, 'source');
     const outDir = path.join(workDir, 'out');
