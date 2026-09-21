@@ -19,8 +19,8 @@ const fsRm = promisify(fs.rm);
  *   - Production, as the entrypoint of the ECS Fargate conversion task
  *     (src/task/convert.ts): `run` is awaited directly. Because it finalizes
  *     metadata itself, the Fargate path needs no completion event on the
- *     success path (unlike MediaConvertConverter) — only a crash safety net,
- *     see src/conversion/ecsTaskEvent.ts.
+ *     success path — only a crash safety net, see
+ *     src/conversion/ecsTaskEvent.ts.
  */
 export class LocalFfmpegConverter implements Converter {
   constructor(

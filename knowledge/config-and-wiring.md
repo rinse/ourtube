@@ -15,7 +15,7 @@ timestamp: 2026-06-21T00:00:00Z
 
 | env | 既定 | 効果 |
 |---|---|---|
-| `CONVERTER` | `local` | `local`=ffmpeg / `mediaconvert`=ジョブ投入。CDK は両 Lambda に `mediaconvert` を渡す |
+| `CONVERTER` | `local` | `local`=同プロセス ffmpeg / `ecs`=Fargate タスク投入。CDK は API Lambda にだけ `ecs` を渡す |
 | `GENAI_PROVIDER` | `OPENAI_API_KEY` あれば `openai`、無ければ `lmstudio` | `bedrock`/`openai`/`mantle`/`lmstudio` |
 | `AUTH_BYPASS` | false | `1`/`true` で認証全スキップ |
 | `AUTH_COOKIE_NAME` | `session` | platform 共通セッション Cookie の名前。[[auth-model]] |
@@ -26,11 +26,11 @@ timestamp: 2026-06-21T00:00:00Z
 | `DYNAMODB_ENDPOINT` / `DYNAMODB_TABLE` | なし / `videoplayer` | DynamoDB Local 用 endpoint |
 | `PRESIGN_TTL_SECONDS` | `3600` | presigned PUT/GET の TTL |
 | `BEDROCK_MODEL_ID` | `apac.anthropic.claude-sonnet-4-20250514-v1:0` | リージョン依存の推論プロファイル |
-| `MEDIACONVERT_ROLE_ARN` | なし | `CONVERTER=mediaconvert` で**必須**（無いと起動時 throw） |
+| `ECS_CLUSTER_ARN` / `ECS_TASK_DEFINITION_ARN` / `ECS_SUBNET_IDS` / `ECS_SECURITY_GROUP_IDS` | なし | `CONVERTER=ecs` で**必須**（無いと起動時 throw） |
 
 # 非自明な点
 
-- **`createDependencies` は converter を eager に構築**する。`MediaConvertConverter` は `MEDIACONVERT_ROLE_ARN` 必須なので、Conversion Lambda は変換ジョブを投入しないのに env で role を渡している（`videoplayer-stack.ts` の該当コメント参照）。
+- **`createDependencies` は converter を eager に構築**する。`EcsFfmpegConverter` は ECS 系 env が必須なので、変換を投入しない Conversion Lambda には `CONVERTER` を渡さず既定の `local` を構築させている（`LocalFfmpegConverter` は追加 env を要求せず、この Lambda では使われない）。
 - メタデータストアとプレイリストストアは**同一 `config.metadata.tableName`** を別インスタンスで共有（[[dynamodb-single-table]]）。
 - ローカル既定値の出所は `scripts/local-env.sh`（config.ts の既定とは別物。例: バケットは `videoplayer-local`）。[[local-dev-environment]]。
 - `server.ts`（ローカル専用エントリポイント）は起動時に `AppConfig` を丸ごと JSON でログ出力する。`genai.openai.apiKey` / `genai.mantle.apiKey` もそのまま出る。

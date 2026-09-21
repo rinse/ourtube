@@ -141,7 +141,7 @@ concurrency:
 
 - `https://ourtube.app.esnir.net/` を開く。未ログイン時は `auth.app.esnir.net/login` へ
   リダイレクトされる。platform アカウントでログインすると `session` Cookie が発行される。
-- アップロード → 変換（MediaConvert）→ 再生 を確認。
+- アップロード → 変換（ECS Fargate の ffmpeg タスク）→ 再生 を確認。
 
 ### CfnOutput
 
@@ -158,10 +158,10 @@ concurrency:
 
 ## 6. 既知の注意点
 
-- **MediaConvert の master manifest 名**: 本構成は `videos/<id>/index.m3u8` になる前提
-  （Destination を `…/index` にするテクニック）。実ジョブで名前が異なると再生が 404 になるが、
-  `finalizeConversion` が `index.m3u8` の実在を確認してから `ready` にするため、
-  ずれた場合は `failed` として可視化される（ログに実キーは出ない点のみ注意）。
+- **変換の失敗検知は二段構え**: Fargate タスクは自分で `ready` / `failed` を確定する。
+  タスクごと死んだ（OOM など）場合だけ EventBridge の `ECS Task State Change` が
+  Conversion Lambda を起こし、`failed` に落とす。両方が落ちると動画は `converting` の
+  まま残るため、`ConversionFnErrorsAlarm` を張ってある。
 - **Bedrock の推論プロファイル ID** はリージョン依存。`BEDROCK_MODEL_ID` を対象リージョンの
   有効な ID に合わせること。
 - **CDK synth（CI）**: `OurtubeCertStack` が `fromLookup` を使うため Route53 API を叩く。

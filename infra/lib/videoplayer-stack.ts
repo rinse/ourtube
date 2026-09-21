@@ -102,23 +102,11 @@ export class VideoplayerStack extends Stack {
       sortKey: { name: 'GSI1SK', type: dynamodb.AttributeType.STRING },
     });
 
-    // --- MediaConvert execution role ----------------------------------------
-    // Conversion runs on Fargate (below); MediaConvert is kept wired as the
-    // rollback lever. Idle it bills nothing — role, grants, MEDIACONVERT_ROLE_ARN
-    // and the MediaConvertComplete rule all cost $0 — so keeping them means
-    // backing out a misbehaving Fargate path is a one-value `CONVERTER` change.
-    // Remove this and the other MediaConvert pieces in a follow-up PR once the
-    // ECS path has proven itself in production.
-    const mediaConvertRole = new iam.Role(this, 'MediaConvertRole', {
-      assumedBy: new iam.ServicePrincipal('mediaconvert.amazonaws.com'),
-    });
-    storageBucket.grantReadWrite(mediaConvertRole);
-
     // --- Conversion compute: Fargate + ffmpeg --------------------------------
-    // MediaConvert bills HD output at 2x the output duration (~$4.7/mo here).
-    // A Fargate task running the same ffmpeg pipeline as local dev costs a
-    // fraction of that — but only while the *network* stays free, so this VPC
-    // is deliberately bare:
+    // Conversion is a Fargate task running the same ffmpeg pipeline as local
+    // dev (the managed-transcoding alternative billed HD output at 2x its
+    // duration — see docs/mediaconvert-cost.md). That is cheap only while the
+    // *network* stays free, so this VPC is deliberately bare:
     //   - no NAT Gateway ($0.062/h ≈ $45/mo — ten times the bill being removed)
     //   - no Interface VPC endpoints (~$0.014/h each; ECR+Logs alone ≈ $40/mo)
     // Tasks run in a public subnet with a public IP and reach ECR / CloudWatch
@@ -218,8 +206,6 @@ export class VideoplayerStack extends Stack {
         ECS_SUBNET_IDS: vpc.publicSubnets.map((s) => s.subnetId).join(','),
         ECS_SECURITY_GROUP_IDS: converterSg.securityGroupId,
         ECS_CONTAINER_NAME: 'converter',
-        // Kept so rolling back is only flipping CONVERTER to 'mediaconvert'.
-        MEDIACONVERT_ROLE_ARN: mediaConvertRole.roleArn,
         GENAI_PROVIDER: 'bedrock',
         BEDROCK_MODEL_ID: props.bedrockModelId,
         // Auth is the shared `.app.esnir.net` session cookie, verified against
@@ -231,14 +217,6 @@ export class VideoplayerStack extends Stack {
     apiFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['bedrock:InvokeModel'],
       resources: ['*'],
-    }));
-    apiFn.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['mediaconvert:CreateJob', 'mediaconvert:DescribeEndpoints'],
-      resources: ['*'],
-    }));
-    apiFn.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['iam:PassRole'],
-      resources: [mediaConvertRole.roleArn],
     }));
     // grantRun covers ecs:RunTask *and* the iam:PassRole on both the task role
     // and the execution role. Hand-rolling the PolicyStatement is how that
@@ -255,7 +233,7 @@ export class VideoplayerStack extends Stack {
     // via origin access control (OAC), is allowed to call it (SigV4-signed).
     const apiUrl = apiFn.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.AWS_IAM });
 
-    // --- Conversion Lambda (MediaConvert completion) -------------------------
+    // --- Conversion Lambda (crashed-task safety net) -------------------------
     const conversionFn = new nodejs.NodejsFunction(this, 'ConversionFn', {
       entry: path.join(BACKEND, 'src', 'lambda', 'conversion.ts'),
       handler: 'handler',
@@ -267,27 +245,15 @@ export class VideoplayerStack extends Stack {
       environment: {
         S3_BUCKET_NAME: storageBucket.bucketName,
         DYNAMODB_TABLE: table.tableName,
-        // CONVERTER is unused on this path but createDependencies builds a
-        // MediaConvert converter lazily; provide the role to satisfy config.
-        CONVERTER: 'mediaconvert',
-        MEDIACONVERT_ROLE_ARN: mediaConvertRole.roleArn,
+        // No CONVERTER here on purpose: this Lambda never starts a conversion,
+        // it only records that one died. The default ('local') is inert.
         GENAI_PROVIDER: 'bedrock',
         BEDROCK_MODEL_ID: props.bedrockModelId,
       },
     });
     table.grantReadWriteData(conversionFn);
+    // Needed to delete the source upload of a crashed conversion.
     storageBucket.grantReadWrite(conversionFn);
-
-    // Kept wired alongside the ECS rule below so switching `CONVERTER` back to
-    // 'mediaconvert' needs no infra change. Costs nothing while no job runs.
-    new events.Rule(this, 'MediaConvertComplete', {
-      eventPattern: {
-        source: ['aws.mediaconvert'],
-        detailType: ['MediaConvert Job State Change'],
-        detail: { status: ['COMPLETE', 'ERROR', 'CANCELED'] },
-      },
-      targets: [new targets.LambdaFunction(conversionFn)],
-    });
 
     // Crash safety net for the Fargate path: the task finalizes its own
     // metadata on both the success and the ffmpeg-failure path, so this only
@@ -346,15 +312,15 @@ export class VideoplayerStack extends Stack {
     });
     apiThrottlesAlarm.addAlarmAction(...alarmActions);
 
-    // Conversion Lambda errors: MediaConvert completion (finalize) failing
-    // repeatedly would otherwise silently leave videos stuck in `converting`.
+    // Conversion Lambda errors: if the crashed-task safety net itself keeps
+    // failing, videos of dead tasks silently stay stuck in `converting`.
     const conversionErrorsAlarm = new cloudwatch.Alarm(this, 'ConversionFnErrorsAlarm', {
       metric: conversionFn.metricErrors({ period: Duration.minutes(15) }),
       threshold: 1,
       evaluationPeriods: 1,
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-      alarmDescription: 'Conversion Lambda (MediaConvert completion/finalize) raised an error.',
+      alarmDescription: 'Conversion Lambda (crashed-task safety net) raised an error.',
     });
     conversionErrorsAlarm.addAlarmAction(...alarmActions);
 

@@ -1,13 +1,13 @@
 # ローカル開発
 
-本番（Lambda/S3/DynamoDB/MediaConvert/Bedrock）と同じコードを、ローカルの
+本番（Lambda/S3/DynamoDB/ECS Fargate/Bedrock）と同じコードを、ローカルの
 代替基盤で動かす。アプリ層は環境変数で実装を切り替える。
 
 | 本番 | ローカル代替 |
 |---|---|
 | S3 | MinIO（`http://localhost:9000`、コンソール `:9001`） |
 | DynamoDB | DynamoDB Local（`:8000`） |
-| MediaConvert | ffmpeg（バックエンド同プロセス・バックグラウンド） |
+| ECS Fargate の ffmpeg タスク | ffmpeg（バックエンド同プロセス・バックグラウンド） |
 | Bedrock | LM Studio（`:1234`、任意） |
 | 認証 | `AUTH_BYPASS=1` で素通り |
 | Lambda(API) | `npm run dev`（同じ `createApp`） |
@@ -62,7 +62,7 @@ cd infra && npm run synth                        # CDK 検証
 | `S3_ENDPOINT` / `S3_FORCE_PATH_STYLE` | MinIO 接続 |
 | `S3_BUCKET_NAME` | バケット名 |
 | `DYNAMODB_ENDPOINT` / `DYNAMODB_TABLE` | DynamoDB Local |
-| `CONVERTER` | `local`（ffmpeg） / `mediaconvert` |
+| `CONVERTER` | `local`（同プロセス ffmpeg） / `ecs`（Fargate タスク投入） |
 | `AUTH_BYPASS` | `1` で認証スキップ |
 | `AUTH_COOKIE_NAME` / `JWKS_URL` | platform セッション Cookie 名（既定 `session`）と検証鍵 JWKS の URL（既定 `https://auth.app.esnir.net/.well-known/jwks.json`） |
 | `GENAI_PROVIDER` | `lmstudio` / `openai` / `mantle` / `bedrock` |

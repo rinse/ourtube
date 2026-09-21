@@ -136,8 +136,7 @@ export async function convertVideoToHLS(sourcePath: string, outputPath: string):
 
 /**
  * Capture a single thumbnail frame at ~10s into the video, written as
- * `thumbnail.jpg`. JPEG (not PNG) so the filename is identical to what the
- * MediaConvert frame-capture path produces.
+ * `thumbnail.jpg` — the canonical name every consumer (API, frontend) expects.
  */
 export const THUMBNAIL_FILENAME = 'thumbnail.jpg';
 

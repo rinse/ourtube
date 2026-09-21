@@ -6,7 +6,6 @@ import {
   ListObjectsV2Command,
   DeleteObjectsCommand,
   DeleteObjectCommand,
-  CopyObjectCommand,
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -141,33 +140,6 @@ export class S3VideoStorage implements VideoStorage {
       });
       await upload.done();
     }));
-  }
-
-  async normalizeThumbnail(videoId: string): Promise<boolean> {
-    const prefix = `${this.cfg.videosPrefix}${videoId}/`;
-    const listed = await this.s3.send(new ListObjectsV2Command({
-      Bucket: this.cfg.bucketName,
-      Prefix: `${prefix}thumb`,
-    }));
-    const captured = (listed.Contents ?? [])
-      .map((o) => o.Key!)
-      .find((key) => /\.jpg$/i.test(key) && !key.endsWith('thumbnail.jpg'));
-    if (!captured) {
-      // Nothing left to rename — either there never was a frame capture, or a
-      // previous (duplicate) invocation already renamed it. Check whether the
-      // canonical thumbnail already exists so this method is idempotent.
-      return this.existsFile(videoId, 'thumbnail.jpg');
-    }
-    const target = `${prefix}thumbnail.jpg`;
-    await this.s3.send(new CopyObjectCommand({
-      Bucket: this.cfg.bucketName,
-      CopySource: `${this.cfg.bucketName}/${captured}`,
-      Key: target,
-      ContentType: 'image/jpeg',
-      MetadataDirective: 'REPLACE',
-    }));
-    await this.s3.send(new DeleteObjectCommand({ Bucket: this.cfg.bucketName, Key: captured }));
-    return true;
   }
 
   private async head(key: string): Promise<boolean> {

@@ -1,7 +1,7 @@
 ---
 type: Architecture Overview
 title: OurTube 全体アーキテクチャと「同一コード二環境」の要
-description: 単一 API Lambda + S3 + DynamoDB + MediaConvert/ffmpeg を、env で実装を差し替えてローカルと本番で同一コード実行する構成の勘所
+description: 単一 API Lambda + S3 + DynamoDB + ffmpeg（Fargate / 同プロセス）を、env で実装を差し替えてローカルと本番で同一コード実行する構成の勘所
 tags: [architecture, serverless, lambda, express]
 timestamp: 2026-06-21T00:00:00Z
 ---
@@ -14,7 +14,7 @@ OurTube は「個人用 YouTube」。**最大の設計思想は "同じ Express 
 # 2 つの Lambda / 1 つの Express
 
 - **API Lambda** (`backend/src/lambda/api.ts`): `@codegenie/serverless-express` で `createApp(deps)` をラップするだけ。`createApp` は **I/O を一切しない工場関数** なので、ローカルサーバ (`backend/src/server.ts`) と Lambda アダプタが同じものを共有できる（`app.ts` のヘッダコメントが明言）。
-- **Conversion Lambda** (`backend/src/lambda/conversion.ts`): MediaConvert 完了 EventBridge イベントを受けて `finalizeConversion` を呼ぶ「別建てコンピュート」。ジョブ投入側（API Lambda）とは別。
+- **Conversion Lambda** (`backend/src/lambda/conversion.ts`): `ECS Task State Change`（STOPPED）を受けて `markConversionFailed` を呼ぶ「別建てコンピュート」。正常終了は変換タスク自身が確定するので、これは**異常終了だけの受け皿**。タスク投入側（API Lambda）とは別。
 - どちらも `createDependencies(createAppConfig())` を**モジュールロード時に一度だけ**構築しコールド スタート間で使い回す。
 
 # 依存注入の流れ（グローバル禁止）
@@ -34,7 +34,7 @@ Dependencies → createApp(deps) / handlers
 | メタデータ | `MetadataStore` | `DynamoMetadataStore` | 同左 + DynamoDB Local endpoint |
 | プレイリスト | `PlaylistStore` | `DynamoPlaylistStore` | 同左（[[dynamodb-single-table]]） |
 | ストレージ | `VideoStorage` | `S3VideoStorage` (S3) | 同左 + MinIO endpoint |
-| 変換 | `Converter` | `MediaConvertConverter`（ジョブ投入のみ） | `LocalFfmpegConverter`（同プロセス・バックグラウンド） |
+| 変換 | `Converter` | `EcsFfmpegConverter`（Fargate タスク投入のみ） | `LocalFfmpegConverter`（同プロセス・バックグラウンド） |
 | AI | `GenAI` | `BedrockGenAI` | `LMStudioGenAI`（`OpenAIGenAI` / `MantleGenAI` も `GENAI_PROVIDER` で選べる） |
 | 認証 | `createAuth` | platform 共通セッション Cookie の ES256/JWKS 検証 | `AUTH_BYPASS=1` で素通り |
 

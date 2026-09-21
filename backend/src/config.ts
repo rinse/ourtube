@@ -2,7 +2,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 
-export type ConverterType = 'local' | 'mediaconvert' | 'ecs';
+export type ConverterType = 'local' | 'ecs';
 export type GenAIProvider = 'bedrock' | 'openai' | 'mantle' | 'lmstudio';
 
 export type AppConfig = {
@@ -28,12 +28,6 @@ export type AppConfig = {
   };
   converter: {
     type: ConverterType;
-    mediaConvert: {
-      roleArn?: string;
-      queueArn?: string;
-      /** Account-specific MediaConvert endpoint. */
-      endpoint?: string;
-    };
     ecs: {
       clusterArn?: string;
       taskDefinitionArn?: string;
@@ -97,11 +91,6 @@ export function createAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig
     },
     converter: {
       type: (env.CONVERTER as ConverterType) ?? 'local',
-      mediaConvert: {
-        roleArn: env.MEDIACONVERT_ROLE_ARN,
-        queueArn: env.MEDIACONVERT_QUEUE_ARN,
-        endpoint: env.MEDIACONVERT_ENDPOINT,
-      },
       ecs: {
         clusterArn: env.ECS_CLUSTER_ARN,
         taskDefinitionArn: env.ECS_TASK_DEFINITION_ARN,

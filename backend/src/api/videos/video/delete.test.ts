@@ -20,7 +20,6 @@ function storageWith(overrides: Partial<VideoStorage> = {}): VideoStorage {
     downloadUpload: async () => {},
     deleteUpload: async () => {},
     uploadVideoDir: async () => {},
-    normalizeThumbnail: async () => true,
     ...overrides,
   };
 }
@@ -45,7 +44,7 @@ function convertingVideo(overrides: Partial<VideoMetadata> = {}): VideoMetadata 
 }
 
 describe('deleteVideo', () => {
-  it('cancels MediaConvert job before deleting when converter_job_id is present', async () => {
+  it('cancels the in-flight conversion task before deleting when converter_job_id is present', async () => {
     const metadata = new InMemoryMetadataStore();
     await metadata.save(convertingVideo({ converter_job_id: 'job-123' }));
 

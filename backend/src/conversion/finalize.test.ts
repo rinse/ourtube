@@ -1,24 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { finalizeConversion } from './finalize';
+import { markConversionFailed } from './finalize';
 import { InMemoryMetadataStore } from '../metadata/InMemoryMetadataStore';
 import { VideoStorage } from '../storage/VideoStorage';
 
 const ID = 'a'.repeat(64);
-
-const MANIFEST = `#EXTM3U
-#EXT-X-VERSION:3
-#EXTINF:10.0,
-index_hls_00001.ts
-#EXTINF:5.0,
-index_hls_00002.ts
-#EXT-X-ENDLIST`;
 
 function storageWith(overrides: Partial<VideoStorage> = {}): VideoStorage {
   return {
     uploadKey: (id) => `uploads/${id}`,
     presignUpload: async () => 'put-url',
     getFile: async () => { throw new Error('no'); },
-    getText: async () => MANIFEST,
+    getText: async () => { throw new Error('no'); },
     presignGetFile: async (id, file) => `https://s3.test/videos/${id}/${file}?sig=abc`,
     existsFile: async () => true,
     exists: async () => true,
@@ -26,112 +18,65 @@ function storageWith(overrides: Partial<VideoStorage> = {}): VideoStorage {
     downloadUpload: async () => {},
     deleteUpload: async () => {},
     uploadVideoDir: async () => {},
-    normalizeThumbnail: async () => true,
     ...overrides,
   };
 }
 
-async function convertingVideo(): Promise<InMemoryMetadataStore> {
+async function videoWith(status: 'converting' | 'ready' | 'failed', hasThumbnail = false): Promise<InMemoryMetadataStore> {
   const metadata = new InMemoryMetadataStore();
-  await metadata.save({ id: ID, title: 't', status: 'converting', created_at: new Date().toISOString(), has_thumbnail: false });
+  await metadata.save({ id: ID, title: 't', status, created_at: new Date().toISOString(), has_thumbnail: hasThumbnail });
   return metadata;
 }
 
-describe('finalizeConversion', () => {
-  it('marks ready with thumbnail on first successful completion', async () => {
-    const metadata = await convertingVideo();
-    const storage = storageWith({ normalizeThumbnail: async () => true });
+describe('markConversionFailed', () => {
+  it('marks a converting video failed and deletes the source upload', async () => {
+    const metadata = await videoWith('converting');
+    let deleted = false;
+    const storage = storageWith({ deleteUpload: async () => { deleted = true; } });
 
-    await finalizeConversion({ storage, metadata }, ID, true);
+    await markConversionFailed({ storage, metadata }, ID);
+
+    expect((await metadata.get(ID))?.status).toBe('failed');
+    expect(deleted).toBe(true);
+  });
+
+  it('still marks failed when deleting the source upload throws', async () => {
+    const metadata = await videoWith('converting');
+    const storage = storageWith({ deleteUpload: async () => { throw new Error('s3 down'); } });
+
+    await markConversionFailed({ storage, metadata }, ID);
+
+    expect((await metadata.get(ID))?.status).toBe('failed');
+  });
+
+  // The guards below are the whole reason this function reads metadata first:
+  // a delayed or duplicate "ECS Task State Change" STOPPED event must not undo
+  // a video the Fargate task already finalized on its own.
+  it('is a no-op on a video the task already finalized as ready', async () => {
+    const metadata = await videoWith('ready', true);
+    let deleted = false;
+    const storage = storageWith({ deleteUpload: async () => { deleted = true; } });
+
+    await markConversionFailed({ storage, metadata }, ID);
 
     const after = await metadata.get(ID);
     expect(after?.status).toBe('ready');
     expect(after?.has_thumbnail).toBe(true);
+    expect(deleted).toBe(false);
   });
 
-  it('stores duration parsed from the generated manifest', async () => {
-    const metadata = await convertingVideo();
-    const storage = storageWith();
+  it('is a no-op when the video is already failed', async () => {
+    const metadata = await videoWith('failed');
 
-    await finalizeConversion({ storage, metadata }, ID, true);
+    await markConversionFailed({ storage: storageWith(), metadata }, ID);
 
-    const after = await metadata.get(ID);
-    expect(after?.duration).toBe(15);
-  });
-
-  it('leaves duration unset when the manifest has no segments', async () => {
-    const metadata = await convertingVideo();
-    const storage = storageWith({ getText: async () => '#EXTM3U\n#EXT-X-ENDLIST' });
-
-    await finalizeConversion({ storage, metadata }, ID, true);
-
-    const after = await metadata.get(ID);
-    expect(after?.duration).toBeUndefined();
-  });
-
-  it('marks failed when the manifest is missing', async () => {
-    const metadata = await convertingVideo();
-    const storage = storageWith({ existsFile: async () => false });
-
-    await finalizeConversion({ storage, metadata }, ID, true);
-
-    const after = await metadata.get(ID);
-    expect(after?.status).toBe('failed');
-  });
-
-  it('marks failed when success=false', async () => {
-    const metadata = await convertingVideo();
-    const storage = storageWith();
-
-    await finalizeConversion({ storage, metadata }, ID, false);
-
-    const after = await metadata.get(ID);
-    expect(after?.status).toBe('failed');
-  });
-
-  it('is idempotent: a duplicate COMPLETE event does not flip has_thumbnail to false', async () => {
-    const metadata = await convertingVideo();
-    let normalizeCalls = 0;
-    const storage = storageWith({
-      normalizeThumbnail: async () => {
-        normalizeCalls += 1;
-        // First call renames the captured frame -> true. A naive second call
-        // (without the idempotency guard) would find nothing left to rename
-        // and return false.
-        return normalizeCalls === 1;
-      },
-    });
-
-    await finalizeConversion({ storage, metadata }, ID, true);
-    const afterFirst = await metadata.get(ID);
-    expect(afterFirst?.status).toBe('ready');
-    expect(afterFirst?.has_thumbnail).toBe(true);
-
-    // Duplicate delivery of the same COMPLETE event.
-    await finalizeConversion({ storage, metadata }, ID, true);
-    const afterSecond = await metadata.get(ID);
-    expect(afterSecond?.status).toBe('ready');
-    expect(afterSecond?.has_thumbnail).toBe(true);
-  });
-
-  it('is idempotent: a duplicate event does not change a terminal failed state', async () => {
-    const metadata = await convertingVideo();
-    const storage = storageWith();
-
-    await finalizeConversion({ storage, metadata }, ID, false);
-    expect((await metadata.get(ID))?.status).toBe('failed');
-
-    // Duplicate delivery, possibly with a different success flag.
-    await finalizeConversion({ storage, metadata }, ID, true);
     expect((await metadata.get(ID))?.status).toBe('failed');
   });
 
   it('is a no-op when the record has been deleted (cancel-then-delete flow)', async () => {
     const metadata = new InMemoryMetadataStore();
-    const storage = storageWith();
 
-    // Record was deleted before the completion event arrived.
-    await finalizeConversion({ storage, metadata }, ID, true);
+    await markConversionFailed({ storage: storageWith(), metadata }, ID);
 
     expect(await metadata.get(ID)).toBeNull();
   });

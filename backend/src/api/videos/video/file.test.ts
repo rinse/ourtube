@@ -26,7 +26,6 @@ function storageWith(manifest: string): VideoStorage {
     downloadUpload: async () => {},
     deleteUpload: async () => {},
     uploadVideoDir: async () => {},
-    normalizeThumbnail: async () => false,
   };
 }
 

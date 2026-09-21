@@ -1,75 +1,35 @@
 import { MetadataStore } from '../metadata/MetadataStore';
 import { VideoStorage } from '../storage/VideoStorage';
-import { parseHlsManifestDuration } from '../media/ffmpeg';
 
 /**
- * Finalize a MediaConvert job: normalize the thumbnail name, flip the metadata
- * status, and clean up the source upload. Invoked from the MediaConvert
- * completion event (src/lambda/conversion.ts).
+ * Mark a conversion as failed and clean up the source upload. The only caller
+ * is the ECS crash safety net (src/lambda/conversion.ts): the Fargate task
+ * finalizes its own metadata on both the success and the ffmpeg-failure path,
+ * so the Lambda only ever has a crash to record.
  */
-export async function finalizeConversion(
+export async function markConversionFailed(
   deps: { storage: VideoStorage; metadata: MetadataStore },
   videoId: string,
-  success: boolean,
 ): Promise<void> {
-  // EventBridge delivers at-least-once, so MediaConvert COMPLETE/ERROR events
-  // may be redelivered after this video has already been finalized. If it's
-  // already in a terminal state, treat this as a no-op rather than risk
-  // re-deriving (and flipping) fields like has_thumbnail.
+  // EventBridge delivers at-least-once, so a STOPPED event may arrive (or be
+  // redelivered) after the task has already finalized this video. If it is
+  // already in a terminal state, treat this as a no-op rather than drag a
+  // `ready` video back to `failed`.
   const existing = await deps.metadata.get(videoId);
   if (!existing) {
-    console.log(`[${videoId}] finalizeConversion: record not found (deleted?), skipping`);
+    console.log(`[${videoId}] markConversionFailed: record not found (deleted?), skipping`);
     return;
   }
   if (existing.status === 'ready' || existing.status === 'failed') {
-    console.log(`[${videoId}] finalizeConversion: already ${existing.status}, skipping duplicate event`);
+    console.log(`[${videoId}] markConversionFailed: already ${existing.status}, skipping duplicate event`);
     return;
   }
 
-  if (!success) {
-    await deps.metadata.updateStatus(videoId, 'failed');
-    await safeDeleteUpload(deps, videoId);
-    console.error(`[${videoId}] conversion failed`);
-    return;
-  }
-
-  // Guard against the "ready-but-broken" trap: MediaConvert's master manifest is
-  // expected at videos/<id>/index.m3u8 (Destination ending in /index). If it is
-  // not there, the player would 404, so mark failed instead of silently ready.
-  const manifestExists = await deps.storage.existsFile(videoId, 'index.m3u8');
-  if (!manifestExists) {
-    await deps.metadata.updateStatus(videoId, 'failed');
-    console.error(`[${videoId}] COMPLETE but videos/${videoId}/index.m3u8 is missing — marking failed`);
-    return;
-  }
-
-  let hasThumbnail = false;
-  try {
-    hasThumbnail = await deps.storage.normalizeThumbnail(videoId);
-  } catch (error) {
-    console.error(`[${videoId}] thumbnail normalization failed:`, error);
-  }
-  await deps.metadata.updateThumbnail(videoId, hasThumbnail);
-
-  try {
-    const manifest = await deps.storage.getText(videoId, 'index.m3u8');
-    const duration = parseHlsManifestDuration(manifest);
-    if (duration !== undefined) {
-      await deps.metadata.updateDuration(videoId, duration);
-    }
-  } catch (error) {
-    console.error(`[${videoId}] duration extraction failed:`, error);
-  }
-
-  await deps.metadata.updateStatus(videoId, 'ready');
-  await safeDeleteUpload(deps, videoId);
-  console.log(`[${videoId}] conversion finalized (thumbnail=${hasThumbnail})`);
-}
-
-async function safeDeleteUpload(deps: { storage: VideoStorage }, videoId: string): Promise<void> {
+  await deps.metadata.updateStatus(videoId, 'failed');
   try {
     await deps.storage.deleteUpload(videoId);
   } catch (error) {
     console.error(`[${videoId}] failed to delete source upload:`, error);
   }
+  console.error(`[${videoId}] conversion failed`);
 }

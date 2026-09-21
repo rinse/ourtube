@@ -32,10 +32,4 @@ export interface VideoStorage {
 
   /** Publish a directory of HLS outputs to videos/<id>/ (used by the local converter). */
   uploadVideoDir(videoId: string, localDir: string): Promise<void>;
-
-  /**
-   * Rename a MediaConvert frame-capture output (videos/<id>/thumb*.jpg) to the
-   * canonical videos/<id>/thumbnail.jpg. Returns whether a thumbnail was found.
-   */
-  normalizeThumbnail(videoId: string): Promise<boolean>;
 }

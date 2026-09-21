@@ -34,7 +34,6 @@ function buildDeps(): Dependencies {
     downloadUpload: async () => {},
     deleteUpload: async () => {},
     uploadVideoDir: async () => {},
-    normalizeThumbnail: async () => true,
   };
   return {
     config,

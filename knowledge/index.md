@@ -9,7 +9,7 @@ okf_version: "0.1"
 
 # 全体像
 
-* [OurTube 全体アーキテクチャと「同一コード二環境」の要](architecture-overview.md) - 単一 API Lambda + S3 + DynamoDB + MediaConvert/ffmpeg を env で差し替え同一コード実行する構成
+* [OurTube 全体アーキテクチャと「同一コード二環境」の要](architecture-overview.md) - 単一 API Lambda + S3 + DynamoDB + ffmpeg（Fargate / 同プロセス）を env で差し替え同一コード実行する構成
 * [設定とDI配線 — env が唯一の環境切り替え軸](config-and-wiring.md) - createAppConfig/createDependencies と主要 env・既定値・非自明な分岐
 
 # サブシステム

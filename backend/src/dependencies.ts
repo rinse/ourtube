@@ -7,7 +7,6 @@ import { VideoStorage } from './storage/VideoStorage';
 import { S3VideoStorage } from './storage/S3VideoStorage';
 import { Converter } from './converter/Converter';
 import { LocalFfmpegConverter } from './converter/LocalFfmpegConverter';
-import { MediaConvertConverter } from './converter/MediaConvertConverter';
 import { EcsFfmpegConverter } from './converter/EcsFfmpegConverter';
 import { GenAI, createGenAI } from './genai/GenAI';
 
@@ -55,16 +54,6 @@ function createConverter(
   localDeps: { storage: VideoStorage; metadata: MetadataStore },
 ): Converter {
   switch (config.converter.type) {
-    case 'mediaconvert':
-      return new MediaConvertConverter({
-        awsRegion: config.awsRegion,
-        bucketName: config.storage.bucketName,
-        uploadsPrefix: config.storage.uploadsPrefix,
-        videosPrefix: config.storage.videosPrefix,
-        roleArn: requireConfig(config.converter.mediaConvert.roleArn, 'MEDIACONVERT_ROLE_ARN', 'mediaconvert'),
-        queueArn: config.converter.mediaConvert.queueArn,
-        endpoint: config.converter.mediaConvert.endpoint,
-      });
     case 'ecs':
       return new EcsFfmpegConverter({
         awsRegion: config.awsRegion,

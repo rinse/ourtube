@@ -58,7 +58,7 @@ export async function createUpload(
 
 /**
  * Step 2 of the upload flow. Called by the browser once the PUT to S3 succeeds;
- * starts conversion (local ffmpeg in dev, MediaConvert job in prod). Returns
+ * starts conversion (local ffmpeg in dev, an ECS Fargate task in prod). Returns
  * false if the video record is unknown.
  *
  * Idempotent: conversion is only (re-)started while the record is still in

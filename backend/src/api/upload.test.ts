@@ -30,7 +30,6 @@ function fakeStorage(): VideoStorage {
     downloadUpload: async () => {},
     deleteUpload: async () => {},
     uploadVideoDir: async () => {},
-    normalizeThumbnail: async () => false,
   };
 }
 

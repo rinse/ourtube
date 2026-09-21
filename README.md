@@ -1,7 +1,7 @@
 # OurTube — 個人用動画配信サービス
 
 YouTube 風の個人用動画配信サービス。アップロード → HLS 変換 → ストリーミング再生。
-AWS サーバーレス構成（単一 API Lambda + S3 + DynamoDB + MediaConvert + Bedrock）に
+AWS サーバーレス構成（単一 API Lambda + S3 + DynamoDB + ECS Fargate + Bedrock）に
 寄せつつ、ローカルでは 1 コマンドで起動・テストできる。
 
 ## 特徴
@@ -9,7 +9,7 @@ AWS サーバーレス構成（単一 API Lambda + S3 + DynamoDB + MediaConvert 
 - **単一 API Lambda**（Express + serverless-express、ローカルは同じ `createApp`）
 - **S3** に動画（presigned PUT で直接アップロード、SHA256 で重複排除）
 - **DynamoDB シングルテーブル** にメタデータ（[docs/dynamodb-schema.md](docs/dynamodb-schema.md)）
-- **MediaConvert** で HLS 変換（完了は EventBridge → Conversion Lambda）
+- **ECS Fargate 上の ffmpeg** で HLS 変換（1 動画 1 タスク、異常終了だけ EventBridge → Conversion Lambda）
 - **Bedrock** でタイトルサジェスト
 - **認証は platform 共通のセッション Cookie**（`*.app.esnir.net` の ES256 JWT を JWKS で検証）
 - **CloudFront + S3** で静的 SPA（Next.js `output: export`）を配信

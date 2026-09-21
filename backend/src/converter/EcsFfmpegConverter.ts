@@ -18,9 +18,9 @@ export type EcsFfmpegConverterConfig = {
 /**
  * Runs a Fargate task whose entrypoint (src/task/convert.ts) is
  * LocalFfmpegConverter.run — the same ffmpeg conversion used for local dev,
- * just packaged as a one-shot container. Unlike MediaConvertConverter, there is
- * no completion event to wait for on the success path: the task finalizes its
- * own metadata (status / thumbnail / duration) before exiting. The
+ * just packaged as a one-shot container. There is no completion event to wait
+ * for on the success path: the task finalizes its own metadata
+ * (status / thumbnail / duration) before exiting. The
  * "ECS Task State Change" EventBridge event handled in src/lambda/conversion.ts
  * is only a safety net for tasks that crash before they get the chance to do
  * that (see src/conversion/ecsTaskEvent.ts).
