@@ -49,7 +49,7 @@ YouTube ライクな個人用動画配信サービスを AWS サーバーレス�
 2. `POST /api/uploads { sha256, fileName, title? }` → Lambda が DynamoDB で**重複チェック**し、`uploads/<id>` への **presigned PUT URL** を返す（メタは `converting` で作成）。
 3. ブラウザが presigned URL へ直接 PUT（API/Lambda を大容量が通らない）。
 4. `POST /api/uploads/<id>/complete` → 変換起動（ローカル=同プロセスの ffmpeg / 本番=Fargate タスクを 1 つ起動）。
-5. 変換タスクが HLS とサムネを `videos/<id>/` へ publish し、status・duration・has_thumbnail を自分で確定して終了する。タスクが確定前に死んだ場合だけ、EventBridge の `ECS Task State Change`（STOPPED）を受けた Conversion Lambda が `failed` に落とす。
+5. 変換タスクが HLS とサムネを `videos/<id>/` へ publish し、status・duration・has_thumbnail を自分で確定して終了する。タスクが確定前に死んだ場合だけ、EventBridge の `ECS Task State Change`（STOPPED）を受けた Conversion Lambda が `failed` に落とす。タスクには 30 分のハードタイムアウトがあり、超過すると exit 1 でこの安全網経由で `failed` になる。
 6. 再生は `GET /api/videos/<id>/index.m3u8`：マニフェストは**無改変（相対パスのまま）**で返す。ブラウザは各セグメント行を `GET /api/videos/<id>/<segment>` として再リクエストし、API がリクエスト時に presign した S3/MinIO の GET URL へ **302 リダイレクト**する。セグメント本体（バイト列）はそのリダイレクト先からブラウザが直接取得。
 
 ## 主要な設計判断

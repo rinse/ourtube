@@ -21,7 +21,9 @@ fast development. See `docs/architecture.md` for the full picture.
   Fargate task per video; the task entrypoint `backend/src/task/convert.ts` is
   `LocalFfmpegConverter` itself and finalizes metadata inline, so
   `backend/src/lambda/conversion.ts` only catches tasks that crashed first —
-  EventBridge `ECS Task State Change` → `markConversionFailed`).
+  EventBridge `ECS Task State Change` → `markConversionFailed`). The task entrypoint
+  enforces a 30-minute hard timeout, exiting 1 (caught by the same crash safety net)
+  if `run()` hasn't finished by then.
   Local = `LocalFfmpegConverter` (ffmpeg in-process, background).
 - **AI**: `GenAI`, selected by `GENAI_PROVIDER`: `BedrockGenAI` (prod) / `OpenAIGenAI` /
   `MantleGenAI` (AWS Bedrock Mantle) / `LMStudioGenAI` (local default).
