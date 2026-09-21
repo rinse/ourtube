@@ -17,20 +17,21 @@
 #   TABLE=VideoplayerStack-TableCD117FA1-1GJK5QX7FVNI3
 #   BUCKET=videoplayerstack-storagebucket19db2ff8-xmispvfvz45n
 #   PREFIX=videos/
-#   PROFILE=agent-developer
+#   PROFILE=agent-ourtube
 #   REGION=ap-northeast-1
 #
-# NOTE: the default PROFILE cannot finish this script. `agent-developer`
-# (DeveloperRole) has S3 write but is denied `dynamodb:UpdateItem` on this
-# table, so every item fails AccessDenied and nothing is written. Use
-# `PROFILE=rinse` for a real run; the default is fine for `--dry-run`
-# (read-only), as is `PROFILE=agent-researcher`.
+# NOTE: `agent-ourtube` assumes `OurtubeAdminRole` (defined in
+# infra/lib/videoplayer-stack.ts), which has write access to this table. Add
+# it to ~/.aws/config if it isn't there yet (see docs/security.md). The
+# account-wide `agent-developer` / `rinse-developer` profiles resolve to
+# `DeveloperRole`, which does not have DynamoDB write and cannot finish this
+# script (it's fine for `--dry-run`, which is read-only).
 set -euo pipefail
 
 TABLE="${TABLE:-VideoplayerStack-TableCD117FA1-1GJK5QX7FVNI3}"
 BUCKET="${BUCKET:-videoplayerstack-storagebucket19db2ff8-xmispvfvz45n}"
 PREFIX="${PREFIX:-videos/}"
-PROFILE="${PROFILE:-agent-developer}"
+PROFILE="${PROFILE:-agent-ourtube}"
 REGION="${REGION:-ap-northeast-1}"
 DRY_RUN=0
 

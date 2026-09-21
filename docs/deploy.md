@@ -153,6 +153,9 @@ concurrency:
 | `StorageBucketName` | 動画 S3 バケット |
 | `SiteBucketName` | 静的 SPA バケット |
 | `TableName` | DynamoDB テーブル |
+| `ConverterClusterName` | 変換用 ECS クラスタ |
+| `ConverterTaskDefinitionArn` | 変換タスク定義（リビジョン付き） |
+| `OurtubeAdminRoleArn` | 運用ロール（`docs/security.md`）の ARN |
 
 `OurtubeCertStack` は証明書 ARN を `CertificateArn` として出力する。
 

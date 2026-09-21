@@ -116,3 +116,31 @@ mutating メソッドに自動付与する（空本文は空文字のハッシ�
   302 が指す先の S3 への最終的なバイト取得のみ（presigned URL 自体は短命）。
 - マネージドルール（SQLi 等の汎用攻撃シグネチャ）による層は持たない。`/api/*` は認証必須・
   本文は小さい・動画は S3 直 PUT のため、個人用途では許容と判断している。
+
+## 運用ロール（OurtubeAdminRole）
+
+本番の DynamoDB テーブルなどを手で直すための IAM ロール。`infra/lib/videoplayer-stack.ts`
+で `VideoplayerStack` の一部として定義する。
+
+**できること**: DynamoDB テーブルの読み書き、ストレージ用 S3 バケットの読み書き、
+このアプリの Lambda / 変換タスクのログ読み取り、詰まった変換タスク（ECS）の停止。
+
+**できないこと**: デプロイ（CloudFormation / `cdk-*` ロールへの assume は持たない）、
+IAM 操作、他スタックのリソース、SPA 配信用の `siteBucket`。
+
+**assume できるのは** `rinse` / `agent` ユーザーのみ、かつ信頼ポリシーの `IpAddress`
+条件で許可した IP からのみ。
+
+アカウント共通の `DeveloperRole`（`aws` リポジトリの `roles/cdk`）に足さなかったのは、
+あのロールが「手で変更したくなるリソース」だけに意図的に絞ってあり DynamoDB はその対象外
+だから。アプリ固有の権限はアプリのスタックに持たせたほうが、何が誰に開いているか
+このリポジトリだけ見れば分かり、監査しやすい。
+
+`~/.aws/config` の設定例:
+
+```ini
+[profile agent-ourtube]
+role_arn = arn:aws:iam::324175221232:role/OurtubeAdminRole
+source_profile = agent
+region = ap-northeast-1
+```

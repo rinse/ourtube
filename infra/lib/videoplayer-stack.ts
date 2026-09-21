@@ -519,6 +519,60 @@ function handler(event) {
       new CfnOutput(this, 'CustomDomainUrl', { value: `https://${APP_DOMAIN}` });
     }
 
+    // --- App admin role -------------------------------------------------------
+    // このアプリのリソースだけを手で触るためのロール。アカウント共通の
+    // DeveloperRole (aws リポジトリ roles/cdk) は「手で変更したくなるリソース」に
+    // 絞ってあり DynamoDB はその対象外なので、アプリに紐づく管理ロールはアプリが持つ。
+    //
+    // 信頼ポリシーのユーザーと IP は aws リポジトリ
+    // (roles/cdk/lib/awsroles-stack.ts) が源泉。値がズレても assume できなくなる
+    // だけで、権限が広がる方向には壊れない (fail-closed)。
+    //
+    // aws リポジトリ側の AssumeWorkRoles への追記は不要: 同一アカウントでは
+    // trust policy がユーザーを名指しした時点で AssumeRole が成立し、identity
+    // policy 側の Allow は要らない。
+    // https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_evaluation-logic-cross-account.html
+    const TRUSTED_SOURCE_IP = '219.104.144.196/32';
+    const adminRole = new iam.Role(this, 'OurtubeAdminRole', {
+      // 固定名: ~/.aws/config が role_arn を直接指すため。
+      roleName: 'OurtubeAdminRole',
+      description: 'Manual administration of OurTube resources (data, storage, logs, tasks).',
+      assumedBy: new iam.CompositePrincipal(
+        new iam.ArnPrincipal(`arn:${this.partition}:iam::${this.account}:user/rinse`),
+        new iam.ArnPrincipal(`arn:${this.partition}:iam::${this.account}:user/agent`),
+      ).withConditions({ IpAddress: { 'aws:SourceIp': TRUSTED_SOURCE_IP } }),
+    });
+
+    table.grantReadWriteData(adminRole);
+    storageBucket.grantReadWrite(adminRole);
+    converterLogGroup.grantRead(adminRole);
+
+    // Lambda のロググループはこのスタックが構築していない (Lambda が暗黙作成する)
+    // ので ARN パターンで指定する。
+    // ※ apiFn.logGroup を参照してはいけない: 参照した瞬間、関数ごとに
+    //    LogRetention カスタムリソース一式 (Lambda + Role + Policy) が生える。
+    adminRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['logs:FilterLogEvents', 'logs:GetLogEvents', 'logs:DescribeLogStreams'],
+      resources: [`arn:${this.partition}:logs:${this.region}:${this.account}:log-group:/aws/lambda/${this.stackName}-*:*`],
+    }));
+    adminRole.addToPolicy(new iam.PolicyStatement({
+      // DescribeLogGroups はリソース単位で絞れない (ロググループを探すのに要る)。
+      actions: ['logs:DescribeLogGroups'],
+      resources: ['*'],
+    }));
+
+    // 詰まった変換タスクを止める。apiFn の ecs:StopTask と同じスコープ。
+    adminRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['ecs:StopTask', 'ecs:DescribeTasks'],
+      resources: [`arn:${this.partition}:ecs:${this.region}:${this.account}:task/${cluster.clusterName}/*`],
+    }));
+    adminRole.addToPolicy(new iam.PolicyStatement({
+      // ListTasks はリソース単位で絞れないので ecs:cluster 条件で縛る。
+      actions: ['ecs:ListTasks'],
+      resources: ['*'],
+      conditions: { ArnEquals: { 'ecs:cluster': cluster.clusterArn } },
+    }));
+
     // --- Outputs -------------------------------------------------------------
     new CfnOutput(this, 'SiteUrl', { value: `https://${distribution.distributionDomainName}` });
     new CfnOutput(this, 'ApiFunctionUrl', { value: apiUrl.url });
@@ -527,5 +581,6 @@ function handler(event) {
     new CfnOutput(this, 'TableName', { value: table.tableName });
     new CfnOutput(this, 'ConverterClusterName', { value: cluster.clusterName });
     new CfnOutput(this, 'ConverterTaskDefinitionArn', { value: taskDefinition.taskDefinitionArn });
+    new CfnOutput(this, 'OurtubeAdminRoleArn', { value: adminRole.roleArn });
   }
 }
