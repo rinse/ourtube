@@ -156,7 +156,9 @@ export class DynamoMetadataStore implements MetadataStore {
   }
 
   async updateDuration(videoId: string, durationSeconds: number): Promise<boolean> {
-    return this.update(videoId, 'SET duration = :d', { ':d': durationSeconds });
+    // `duration` is a DynamoDB reserved word, so it needs the same alias
+    // treatment as `status` above — a bare name yields a ValidationException.
+    return this.update(videoId, 'SET #d = :d', { ':d': durationSeconds }, { '#d': 'duration' });
   }
 
   private async update(
