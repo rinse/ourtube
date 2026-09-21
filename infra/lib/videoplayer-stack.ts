@@ -7,6 +7,9 @@ import {
   CfnOutput,
   aws_s3 as s3,
   aws_dynamodb as dynamodb,
+  aws_ec2 as ec2,
+  aws_ecs as ecs,
+  aws_logs as logs,
   aws_lambda as lambda,
   aws_lambda_nodejs as nodejs,
   aws_iam as iam,
@@ -100,10 +103,91 @@ export class VideoplayerStack extends Stack {
     });
 
     // --- MediaConvert execution role ----------------------------------------
+    // Conversion runs on Fargate (below); MediaConvert is kept wired as the
+    // rollback lever. Idle it bills nothing — role, grants, MEDIACONVERT_ROLE_ARN
+    // and the MediaConvertComplete rule all cost $0 — so keeping them means
+    // backing out a misbehaving Fargate path is a one-value `CONVERTER` change.
+    // Remove this and the other MediaConvert pieces in a follow-up PR once the
+    // ECS path has proven itself in production.
     const mediaConvertRole = new iam.Role(this, 'MediaConvertRole', {
       assumedBy: new iam.ServicePrincipal('mediaconvert.amazonaws.com'),
     });
     storageBucket.grantReadWrite(mediaConvertRole);
+
+    // --- Conversion compute: Fargate + ffmpeg --------------------------------
+    // MediaConvert bills HD output at 2x the output duration (~$4.7/mo here).
+    // A Fargate task running the same ffmpeg pipeline as local dev costs a
+    // fraction of that — but only while the *network* stays free, so this VPC
+    // is deliberately bare:
+    //   - no NAT Gateway ($0.062/h ≈ $45/mo — ten times the bill being removed)
+    //   - no Interface VPC endpoints (~$0.014/h each; ECR+Logs alone ≈ $40/mo)
+    // Tasks run in a public subnet with a public IP and reach ECR / CloudWatch
+    // Logs / DynamoDB over the internet. Only S3 — the bulk traffic — gets an
+    // endpoint, and the Gateway kind is free.
+    //
+    // Adding a NAT Gateway, an Interface endpoint or Container Insights here
+    // costs more than the conversion it would be observing. Don't, without
+    // redoing this arithmetic.
+    const vpc = new ec2.Vpc(this, 'ConverterVpc', {
+      maxAzs: 2,
+      natGateways: 0,
+      subnetConfiguration: [{ name: 'public', subnetType: ec2.SubnetType.PUBLIC }],
+    });
+    vpc.addGatewayEndpoint('S3Endpoint', { service: ec2.GatewayVpcEndpointAwsService.S3 });
+
+    // Outbound only: the task dials out, nothing ever connects to it.
+    const converterSg = new ec2.SecurityGroup(this, 'ConverterSg', { vpc, allowAllOutbound: true });
+
+    const converterLogGroup = new logs.LogGroup(this, 'ConverterLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+
+    // Container Insights left at the default (off) — it bills per metric and
+    // this cluster runs a handful of short tasks a month.
+    const cluster = new ecs.Cluster(this, 'ConverterCluster', { vpc });
+
+    const taskDefinition = new ecs.FargateTaskDefinition(this, 'ConverterTask', {
+      cpu: 4096,
+      memoryLimitMiB: 8192,
+      // x86_64, not ARM64: Graviton Fargate is ~20% cheaper, but the image
+      // would then need buildx/QEMU in CI to save about $0.09/month.
+      runtimePlatform: {
+        cpuArchitecture: ecs.CpuArchitecture.X86_64,
+        operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
+      },
+      // ponytail: ephemeral storage left at the Fargate default of 20 GiB,
+      // which fits the source plus its HLS rendition at the sizes uploaded so
+      // far. A larger source fills the disk and the task dies — the
+      // ConverterTaskStopped rule below then flips the video to `failed`. If
+      // that starts happening, set `ephemeralStorageGiB` (max 200).
+    });
+
+    // The container name is a contract with EcsFfmpegConverter, which addresses
+    // its VIDEO_ID container override by name (ECS_CONTAINER_NAME below). A
+    // mismatch fails silently: RunTask succeeds, the override is dropped, and
+    // the task exits for want of VIDEO_ID. Pinned explicitly so renaming the
+    // construct id can't change it.
+    taskDefinition.addContainer('converter', {
+      containerName: 'converter',
+      image: ecs.ContainerImage.fromAsset(BACKEND),
+      logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'converter', logGroup: converterLogGroup }),
+      environment: {
+        S3_BUCKET_NAME: storageBucket.bucketName,
+        DYNAMODB_TABLE: table.tableName,
+        GENAI_PROVIDER: 'bedrock',
+        BEDROCK_MODEL_ID: props.bedrockModelId,
+        // Fargate, unlike Lambda, injects no AWS_REGION — without this every
+        // S3/DynamoDB call in the task would rely on config.ts's hardcoded
+        // fallback happening to match this stack's region.
+        AWS_REGION: this.region,
+        // CONVERTER is deliberately unset (so: 'local'). This task *is* the
+        // converter; src/task/convert.ts pins the same value defensively.
+        // TMP_DIR comes from the Dockerfile.
+      },
+    });
+    storageBucket.grantReadWrite(taskDefinition.taskRole);
+    table.grantReadWriteData(taskDefinition.taskRole);
 
     const bundling: nodejs.BundlingOptions = {
       minify: true,
@@ -128,7 +212,13 @@ export class VideoplayerStack extends Stack {
       environment: {
         S3_BUCKET_NAME: storageBucket.bucketName,
         DYNAMODB_TABLE: table.tableName,
-        CONVERTER: 'mediaconvert',
+        CONVERTER: 'ecs',
+        ECS_CLUSTER_ARN: cluster.clusterArn,
+        ECS_TASK_DEFINITION_ARN: taskDefinition.taskDefinitionArn,
+        ECS_SUBNET_IDS: vpc.publicSubnets.map((s) => s.subnetId).join(','),
+        ECS_SECURITY_GROUP_IDS: converterSg.securityGroupId,
+        ECS_CONTAINER_NAME: 'converter',
+        // Kept so rolling back is only flipping CONVERTER to 'mediaconvert'.
         MEDIACONVERT_ROLE_ARN: mediaConvertRole.roleArn,
         GENAI_PROVIDER: 'bedrock',
         BEDROCK_MODEL_ID: props.bedrockModelId,
@@ -149,6 +239,16 @@ export class VideoplayerStack extends Stack {
     apiFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['iam:PassRole'],
       resources: [mediaConvertRole.roleArn],
+    }));
+    // grantRun covers ecs:RunTask *and* the iam:PassRole on both the task role
+    // and the execution role. Hand-rolling the PolicyStatement is how that
+    // PassRole gets forgotten — RunTask then fails at runtime, not at deploy.
+    taskDefinition.grantRun(apiFn);
+    // Cancelling an in-flight conversion (Converter.cancelJob -> StopTask) is
+    // not part of grantRun. Scoped to this cluster's tasks.
+    apiFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ecs:StopTask'],
+      resources: [`arn:${this.partition}:ecs:${this.region}:${this.account}:task/${cluster.clusterName}/*`],
     }));
 
     // AWS_IAM so the Function URL can't be invoked directly — only CloudFront,
@@ -178,11 +278,31 @@ export class VideoplayerStack extends Stack {
     table.grantReadWriteData(conversionFn);
     storageBucket.grantReadWrite(conversionFn);
 
+    // Kept wired alongside the ECS rule below so switching `CONVERTER` back to
+    // 'mediaconvert' needs no infra change. Costs nothing while no job runs.
     new events.Rule(this, 'MediaConvertComplete', {
       eventPattern: {
         source: ['aws.mediaconvert'],
         detailType: ['MediaConvert Job State Change'],
         detail: { status: ['COMPLETE', 'ERROR', 'CANCELED'] },
+      },
+      targets: [new targets.LambdaFunction(conversionFn)],
+    });
+
+    // Crash safety net for the Fargate path: the task finalizes its own
+    // metadata on both the success and the ffmpeg-failure path, so this only
+    // matters for a task that died first (OOM, disk full, ...). Narrowed to
+    // this cluster and to STOPPED — without both filters every
+    // PROVISIONING/PENDING/RUNNING transition, of every ECS task in the
+    // account, would invoke the Lambda.
+    new events.Rule(this, 'ConverterTaskStopped', {
+      eventPattern: {
+        source: ['aws.ecs'],
+        detailType: ['ECS Task State Change'],
+        detail: {
+          clusterArn: [cluster.clusterArn],
+          lastStatus: ['STOPPED'],
+        },
       },
       targets: [new targets.LambdaFunction(conversionFn)],
     });
@@ -439,5 +559,7 @@ function handler(event) {
     new CfnOutput(this, 'StorageBucketName', { value: storageBucket.bucketName });
     new CfnOutput(this, 'SiteBucketName', { value: siteBucket.bucketName });
     new CfnOutput(this, 'TableName', { value: table.tableName });
+    new CfnOutput(this, 'ConverterClusterName', { value: cluster.clusterName });
+    new CfnOutput(this, 'ConverterTaskDefinitionArn', { value: taskDefinition.taskDefinitionArn });
   }
 }

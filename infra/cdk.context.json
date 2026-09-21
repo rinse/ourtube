@@ -2,5 +2,10 @@
   "hosted-zone:account=324175221232:domainName=app.esnir.net:region=us-east-1": {
     "Id": "/hostedzone/Z0732074VRKYS824NY38",
     "Name": "app.esnir.net."
-  }
+  },
+  "availability-zones:account=324175221232:region=ap-northeast-1": [
+    "ap-northeast-1a",
+    "ap-northeast-1c",
+    "ap-northeast-1d"
+  ]
 }
