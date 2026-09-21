@@ -17,7 +17,7 @@ timestamp: 2026-06-21T00:00:00Z
 
 # 状態は 3 値のみ
 
-`converting | ready | failed`。**`pending` は存在しない**。`has_thumbnail` はネイティブ boolean。
+`converting | ready | failed`。`has_thumbnail` はネイティブ boolean。
 
 # 非自明な冪等性・堅牢性ガード（必読）
 

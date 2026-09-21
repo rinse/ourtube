@@ -4,14 +4,6 @@ import { createDependencies } from '../dependencies';
 import { markConversionFailed } from '../conversion/finalize';
 import { parseEcsTaskEvent, type EcsTaskStateChangeDetail } from '../conversion/ecsTaskEvent';
 
-/**
- * Conversion Lambda — the "別建て" compute, fed by a single EventBridge rule
- * ("ECS Task State Change", narrowed to the converter cluster and STOPPED).
- * It is purely a crash safety net: the Fargate task (src/task/convert.ts)
- * finalizes its own metadata on both the success and the ffmpeg-failure path,
- * so this only fires for a task that died before it could — see
- * src/conversion/ecsTaskEvent.ts.
- */
 const deps = createDependencies(createAppConfig());
 
 export async function handler(event: EventBridgeEvent<string, unknown>): Promise<void> {
@@ -32,7 +24,5 @@ export async function handler(event: EventBridgeEvent<string, unknown>): Promise
     console.error('ECS task crashed without a VIDEO_ID override; ignoring', detail);
     return;
   }
-  // markConversionFailed's terminal-state guard makes this a no-op if the task
-  // did finish and finalize before its container died.
   await markConversionFailed(deps, videoId);
 }

@@ -25,7 +25,6 @@ function fakeStorage(): VideoStorage {
     getText: async () => '',
     presignGetFile: async (id, file) => `https://example.com/videos/${id}/${file}?sig=test`,
     existsFile: async () => false,
-    exists: async () => false,
     delete: async () => true,
     downloadUpload: async () => {},
     deleteUpload: async () => {},
@@ -97,27 +96,17 @@ describe('completeUpload', () => {
     expect(converter.calls).toEqual([HASH]);
   });
 
-  it('does not restart conversion and keeps status when already ready', async () => {
-    await metadata.save({ id: HASH, title: 'x', status: 'ready', created_at: new Date().toISOString(), has_thumbnail: false });
+  it.each(['ready', 'failed'] as const)('does not restart conversion and keeps status when already %s', async (status) => {
+    await metadata.save({ id: HASH, title: 'x', status, created_at: new Date().toISOString(), has_thumbnail: false });
     const res = await completeUpload({ metadata, converter }, HASH);
     expect(res).toBe(true);
     expect(converter.calls).toEqual([]);
-    expect((await metadata.get(HASH))!.status).toBe('ready');
-  });
-
-  it('does not restart conversion when already failed', async () => {
-    await metadata.save({ id: HASH, title: 'x', status: 'failed', created_at: new Date().toISOString(), has_thumbnail: false });
-    const res = await completeUpload({ metadata, converter }, HASH);
-    expect(res).toBe(true);
-    expect(converter.calls).toEqual([]);
-    expect((await metadata.get(HASH))!.status).toBe('failed');
+    expect((await metadata.get(HASH))!.status).toBe(status);
   });
 
   it('is idempotent across repeated /complete calls once conversion has finished', async () => {
     await metadata.save({ id: HASH, title: 'x', status: 'converting', created_at: new Date().toISOString(), has_thumbnail: false });
     await completeUpload({ metadata, converter }, HASH);
-    // Simulate the converter having finished and flipped status to 'ready'
-    // (as LocalFfmpegConverter/finalize do) before the retry/double-submit arrives.
     await metadata.updateStatus(HASH, 'ready');
 
     const res = await completeUpload({ metadata, converter }, HASH);

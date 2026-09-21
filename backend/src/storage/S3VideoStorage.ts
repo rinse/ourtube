@@ -84,10 +84,6 @@ export class S3VideoStorage implements VideoStorage {
     return this.head(this.videoKey(videoId, filename));
   }
 
-  async exists(videoId: string): Promise<boolean> {
-    return this.head(this.videoKey(videoId, 'index.m3u8'));
-  }
-
   async delete(videoId: string): Promise<boolean> {
     try {
       const prefix = `${this.cfg.videosPrefix}${videoId}/`;
@@ -163,7 +159,6 @@ export type DeletePrefixS3Client = {
   send(command: DeleteObjectsCommand): Promise<unknown>;
 };
 
-/** Splits an array into chunks of at most `size` items each. */
 export function chunkArray<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < items.length; i += size) {
@@ -172,7 +167,6 @@ export function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
-/** Lists every key under `prefix` by following `ListObjectsV2` pagination. */
 export async function listAllKeys(s3: DeletePrefixS3Client, bucket: string, prefix: string): Promise<string[]> {
   const keys: string[] = [];
   let continuationToken: string | undefined;

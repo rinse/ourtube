@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-# Backfill the `duration` attribute for videos whose metadata is missing it
-# (existing videos converted before the fix in commit 9f92031, which corrected
-# DynamoMetadataStore.updateDuration's use of the DynamoDB reserved word
-# `duration` as a bare attribute name). Recomputes duration by summing
-# `#EXTINF` values from each video's HLS manifest in S3, using the same
-# semantics as backend/src/media/ffmpeg.ts parseHlsManifestDuration (sum of
-# #EXTINF lines; a manifest with no segments is skipped, never written as 0).
+# Backfill the `duration` attribute for videos whose metadata is missing it.
+# Recomputes duration by summing `#EXTINF` values from each video's HLS
+# manifest in S3, using the same semantics as backend/src/media/ffmpeg.ts
+# parseHlsManifestDuration (sum of #EXTINF lines; a manifest with no segments
+# is skipped, never written as 0).
 #
 # Target videos are enumerated from DynamoDB (GSI1, not S3 listing), limited
 # to status=ready items that don't already have a duration attribute.
@@ -20,7 +18,7 @@
 #   PROFILE=agent-ourtube
 #   REGION=ap-northeast-1
 #
-# NOTE: `agent-ourtube` assumes `OurtubeAdminRole` (defined in
+# `agent-ourtube` assumes `OurtubeAdminRole` (defined in
 # infra/lib/videoplayer-stack.ts), which has write access to this table. Add
 # it to ~/.aws/config if it isn't there yet (see docs/security.md). The
 # account-wide `agent-developer` / `rinse-developer` profiles resolve to

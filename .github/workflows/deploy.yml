@@ -93,14 +93,10 @@ jobs:
 
       - name: CDK deploy
         # Two stacks (OurtubeCertStack in us-east-1 + VideoplayerStack), so
-        # --all is required to select both. Access control is geo restriction +
-        # auth + reserved concurrency. See docs/security.md.
+        # --all is required to select both.
         run: npx cdk deploy --all --require-approval never
         working-directory: infra
         env:
           # No CDK_DEFAULT_REGION: the CDK CLI overwrites it in the app
           # subprocess, so the region is pinned in infra/bin/videoplayer.ts.
           BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
-          # The ACM cert (OurtubeCertStack, us-east-1) and Route53 alias records
-          # are fully CDK-managed. The cert ARN is passed to VideoplayerStack via
-          # CDK cross-region references — no manual CERTIFICATE_ARN var needed.

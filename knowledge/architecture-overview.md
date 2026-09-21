@@ -38,7 +38,7 @@ Dependencies → createApp(deps) / handlers
 | AI | `GenAI` | `BedrockGenAI` | `LMStudioGenAI`（`OpenAIGenAI` / `MantleGenAI` も `GENAI_PROVIDER` で選べる） |
 | 認証 | `createAuth` | platform 共通セッション Cookie の ES256/JWKS 検証 | `AUTH_BYPASS=1` で素通り |
 
-注: メタデータとプレイリストは**別ストアだが同一 DynamoDB テーブル**を共有する（同一 `tableName`、`GSI1` をパーティション値で論理分離）。
+メタデータとプレイリストは**別ストアだが同一 DynamoDB テーブル**を共有する（同一 `tableName`、`GSI1` をパーティション値で論理分離）。
 
 # 主要なリクエスト経路
 

@@ -51,11 +51,11 @@ const SSM_HOSTED_ZONE_ID_PARAM = '/esnir/platform/hosted-zone-id';
 export interface VideoplayerStackProps extends StackProps {
   bedrockModelId: string;
   // ACM certificate for ourtube.app.esnir.net, created by CertificateStack in
-  // us-east-1 and passed here via CDK cross-region references. Omit only for
-  // local synth / infra smoke-tests — without it the distribution falls back to
-  // *.cloudfront.net, which can't receive the Domain=.app.esnir.net cookie
-  // (→ auth redirect loop). See lib/certificate-stack.ts.
-  certificate?: ICertificate;
+  // us-east-1 and passed here via CDK cross-region references. It is what lets
+  // the distribution answer on the custom domain; on *.cloudfront.net the
+  // Domain=.app.esnir.net cookie never arrives (→ auth redirect loop).
+  // See lib/certificate-stack.ts.
+  certificate: ICertificate;
   // Optional: when set, an SNS topic is created and alarms email this address.
   // Omitted by default so the stack still synths/deploys with no extra config —
   // the alarms remain defined and visible in the CloudWatch console either way.
@@ -104,10 +104,10 @@ export class VideoplayerStack extends Stack {
 
     // --- Conversion compute: Fargate + ffmpeg --------------------------------
     // Conversion is a Fargate task running the same ffmpeg pipeline as local
-    // dev (the managed-transcoding alternative billed HD output at 2x its
-    // duration — see docs/mediaconvert-cost.md). That is cheap only while the
-    // *network* stays free, so this VPC is deliberately bare:
-    //   - no NAT Gateway ($0.062/h ≈ $45/mo — ten times the bill being removed)
+    // dev (managed transcoding bills HD output at 2x its duration — see
+    // docs/mediaconvert-cost.md). That is cheap only while the *network* stays
+    // free, so this VPC is deliberately bare:
+    //   - no NAT Gateway ($0.062/h ≈ $45/mo — ten times the conversion bill itself)
     //   - no Interface VPC endpoints (~$0.014/h each; ECR+Logs alone ≈ $40/mo)
     // Tasks run in a public subnet with a public IP and reach ECR / CloudWatch
     // Logs / DynamoDB over the internet. Only S3 — the bulk traffic — gets an
@@ -274,11 +274,6 @@ export class VideoplayerStack extends Stack {
     });
 
     // --- CloudWatch Alarms: error/cost visibility -----------------------------
-    // Today the only cost/error visibility is the manual scripts/cost-report.sh.
-    // These alarms make the failure/cost-protection conditions observable in the
-    // console without anyone having to remember to look. Notifications are
-    // optional (gated on `alarmEmail`) so the stack still synths/deploys with no
-    // extra config; the alarms themselves are unconditional.
     let alarmTopic: sns.Topic | undefined;
     if (props.alarmEmail) {
       alarmTopic = new sns.Topic(this, 'AlarmTopic');
@@ -404,12 +399,9 @@ function handler(event) {
 }`),
     });
 
-    // Cert for APP_DOMAIN, created in us-east-1 by CertificateStack and handed
-    // over by CDK cross-region references. Absent only on lookup-free synth.
-    const certificate = props.certificate;
-
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
-      ...(certificate ? { domainNames: [APP_DOMAIN], certificate } : {}),
+      domainNames: [APP_DOMAIN],
+      certificate: props.certificate,
       // Edge-level country allowlist (free): foreign traffic is dropped before
       // it reaches the origin. This is a traffic filter, not the access
       // boundary — the platform session cookie gates /api/*. Add countries here
@@ -428,7 +420,7 @@ function handler(event) {
         // Thumbnails are effectively immutable (content-addressed video id +
         // fixed filename), so this gets its own cache-enabled behavior to take
         // them off the same Lambda concurrency budget the list page's burst
-        // (~60 thumbnails) would otherwise exhaust (issue #65). The auth gate
+        // (~60 thumbnails) would otherwise exhaust. The auth gate
         // (CloudFront Function) still runs on every request — cache or
         // not — so an unauthenticated viewer is rejected before the cache is
         // even consulted; only the *cache key* excludes the cookie (a custom
@@ -436,11 +428,6 @@ function handler(event) {
         // every request that passes the gate. On a cache MISS the cookie is
         // still forwarded to the origin (originRequestPolicy below) so the
         // Lambda's own session check still applies.
-        //
-        // This intentionally serves thumbnails from a path that is cacheable
-        // without per-viewer variation — a deliberate, narrower exception to
-        // the no-edge-caching default for /api/*, scoped to a single
-        // low-sensitivity, content-addressed resource.
         'api/videos/*/thumbnail.jpg': {
           origin: origins.FunctionUrlOrigin.withOriginAccessControl(apiUrl),
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -503,21 +490,17 @@ function handler(event) {
     // --- Custom domain alias records (CloudFront is dual-stack -> A + AAAA) ---
     // The `app.esnir.net` hosted zone id is published by the platform as an SSM
     // parameter (read by fixed name at synth/deploy time — no CFN Import, no IAM).
-    // Gated on the cert: without a us-east-1 cert there is no custom domain to
-    // point at, so synth stays clean and import-free (local/CI synth).
-    if (certificate) {
-      const hostedZoneId = ssm.StringParameter.valueForStringParameter(this, SSM_HOSTED_ZONE_ID_PARAM);
-      const zone = route53.HostedZone.fromHostedZoneAttributes(this, 'Zone', {
-        hostedZoneId,
-        zoneName: DELEGATED_ZONE,
-      });
-      const aliasTarget = route53.RecordTarget.fromAlias(
-        new route53Targets.CloudFrontTarget(distribution),
-      );
-      new route53.ARecord(this, 'AliasA', { zone, recordName: APP_SUBDOMAIN, target: aliasTarget });
-      new route53.AaaaRecord(this, 'AliasAAAA', { zone, recordName: APP_SUBDOMAIN, target: aliasTarget });
-      new CfnOutput(this, 'CustomDomainUrl', { value: `https://${APP_DOMAIN}` });
-    }
+    const hostedZoneId = ssm.StringParameter.valueForStringParameter(this, SSM_HOSTED_ZONE_ID_PARAM);
+    const zone = route53.HostedZone.fromHostedZoneAttributes(this, 'Zone', {
+      hostedZoneId,
+      zoneName: DELEGATED_ZONE,
+    });
+    const aliasTarget = route53.RecordTarget.fromAlias(
+      new route53Targets.CloudFrontTarget(distribution),
+    );
+    new route53.ARecord(this, 'AliasA', { zone, recordName: APP_SUBDOMAIN, target: aliasTarget });
+    new route53.AaaaRecord(this, 'AliasAAAA', { zone, recordName: APP_SUBDOMAIN, target: aliasTarget });
+    new CfnOutput(this, 'CustomDomainUrl', { value: `https://${APP_DOMAIN}` });
 
     // --- App admin role -------------------------------------------------------
     // このアプリのリソースだけを手で触るためのロール。アカウント共通の

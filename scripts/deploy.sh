@@ -6,8 +6,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Auth is the shared *.app.esnir.net session — no local secret. The ACM cert
-# (OurtubeCertStack, us-east-1) is CDK-managed; no CERTIFICATE_ARN env var
-# needed. Route53 fromLookup runs at synth time so AWS credentials are required.
+# (OurtubeCertStack, us-east-1) is CDK-managed. Route53 fromLookup runs at
+# synth time, so AWS credentials are required.
 # The deploy region is pinned in infra/bin/videoplayer.ts — setting
 # CDK_DEFAULT_REGION here would do nothing (the CDK CLI overwrites it).
 

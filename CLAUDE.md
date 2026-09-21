@@ -8,7 +8,7 @@ OurTube — a personal (single-user) YouTube-like video service. Upload → HLS
 conversion → streaming. The stack is AWS-serverless but runs fully locally for
 fast development. See `docs/architecture.md` for the full picture.
 
-## Architecture (current)
+## Architecture
 
 - **API**: single Lambda behind a Function URL, wrapped by `@codegenie/serverless-express`.
   The Express app is a factory (`backend/src/app.ts` `createApp(deps)`) shared by the
@@ -17,14 +17,13 @@ fast development. See `docs/architecture.md` for the full picture.
   (`backend/src/metadata/`). Schema: `docs/dynamodb-schema.md`. Local: DynamoDB Local.
 - **Storage**: S3 via `VideoStorage` / `S3VideoStorage` (`backend/src/storage/`),
   pure I/O + presign. Local: MinIO (S3 SDK + custom endpoint).
-- **Conversion**: `Converter` abstraction. Prod = `EcsFfmpegConverter` (runs one
-  Fargate task per video; the task entrypoint `backend/src/task/convert.ts` is
-  `LocalFfmpegConverter` itself and finalizes metadata inline, so
-  `backend/src/lambda/conversion.ts` only catches tasks that crashed first —
-  EventBridge `ECS Task State Change` → `markConversionFailed`). The task entrypoint
-  enforces a 30-minute hard timeout, exiting 1 (caught by the same crash safety net)
-  if `run()` hasn't finished by then.
-  Local = `LocalFfmpegConverter` (ffmpeg in-process, background).
+- **Conversion**: `Converter` abstraction. Prod = `EcsFfmpegConverter` (one Fargate
+  task per video; the task entrypoint `backend/src/task/convert.ts` is
+  `LocalFfmpegConverter` itself, finalizes metadata inline, and exits 1 if `run()`
+  outlasts its 30-minute hard timeout). `backend/src/lambda/conversion.ts` therefore
+  only catches tasks that died before finalizing — EventBridge
+  `ECS Task State Change` → `markConversionFailed`. Local = `LocalFfmpegConverter`
+  (ffmpeg in-process, background).
 - **AI**: `GenAI`, selected by `GENAI_PROVIDER`: `BedrockGenAI` (prod) / `OpenAIGenAI` /
   `MantleGenAI` (AWS Bedrock Mantle) / `LMStudioGenAI` (local default).
 - **Auth**: the platform-wide `session` cookie (ES256 JWT, `Domain=.app.esnir.net`,
@@ -73,8 +72,8 @@ cd infra && npm run deploy        # cdk deploy --all (normally via GitHub Action
 - **Upload** is browser SHA256 → `POST /api/uploads` (presigned PUT, dedup) → PUT
   straight to S3 → `POST /api/uploads/:id/complete` (starts conversion). Bytes never
   pass through the API, and conversion is triggered by that call, not by an S3 event.
-- **Status** is only `converting | ready | failed` (no `pending`). `has_thumbnail`
-  is a native boolean.
+- **Status** is only `converting | ready | failed`. `has_thumbnail` is a native
+  boolean.
 - **Thumbnail** filename is `thumbnail.jpg` (both converters).
 - Keep storage/metadata interfaces thin so unit tests use in-memory fakes
   (`InMemoryMetadataStore`, hand-rolled storage fakes) without AWS.

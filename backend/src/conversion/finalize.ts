@@ -1,12 +1,6 @@
 import { MetadataStore } from '../metadata/MetadataStore';
 import { VideoStorage } from '../storage/VideoStorage';
 
-/**
- * Mark a conversion as failed and clean up the source upload. The only caller
- * is the ECS crash safety net (src/lambda/conversion.ts): the Fargate task
- * finalizes its own metadata on both the success and the ffmpeg-failure path,
- * so the Lambda only ever has a crash to record.
- */
 export async function markConversionFailed(
   deps: { storage: VideoStorage; metadata: MetadataStore },
   videoId: string,

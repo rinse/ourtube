@@ -15,7 +15,6 @@ function storageWith(overrides: Partial<VideoStorage> = {}): VideoStorage {
     getText: async () => '',
     presignGetFile: async (id, file) => `https://s3.test/videos/${id}/${file}?sig=abc`,
     existsFile: async () => true,
-    exists: async () => true,
     delete: async () => true,
     downloadUpload: async () => {},
     deleteUpload: async () => {},
@@ -32,7 +31,7 @@ function converterWith(overrides: Partial<Converter> = {}): Converter {
   };
 }
 
-function convertingVideo(overrides: Partial<VideoMetadata> = {}): VideoMetadata {
+function videoWith(overrides: Partial<VideoMetadata> = {}): VideoMetadata {
   return {
     id: ID,
     title: 'test',
@@ -44,28 +43,35 @@ function convertingVideo(overrides: Partial<VideoMetadata> = {}): VideoMetadata 
 }
 
 describe('deleteVideo', () => {
-  it('cancels the in-flight conversion task before deleting when converter_job_id is present', async () => {
+  it('cancels the in-flight conversion task, then drops the record and the source upload', async () => {
     const metadata = new InMemoryMetadataStore();
-    await metadata.save(convertingVideo({ converter_job_id: 'job-123' }));
+    await metadata.save(videoWith({ converter_job_id: 'job-123' }));
 
     let cancelledJobId: string | null = null;
     const converter = converterWith({
       cancelJob: async (jobId) => { cancelledJobId = jobId; },
     });
+    let uploadDeleted = false;
+    const storage = storageWith({
+      deleteUpload: async () => { uploadDeleted = true; },
+    });
 
-    const result = await deleteVideo(
-      { storage: storageWith(), metadata, converter },
-      ID,
-    );
+    const result = await deleteVideo({ storage, metadata, converter }, ID);
 
     expect(result).toBe(true);
     expect(cancelledJobId).toBe('job-123');
     expect(await metadata.get(ID)).toBeNull();
+    expect(uploadDeleted).toBe(true);
   });
 
-  it('does not call cancelJob when converter_job_id is absent (stuck/no job)', async () => {
+  // Only a `converting` record with a job id has a task left to stop: a stuck
+  // upload never got one, and a finished video's id points at a long-gone task.
+  it.each([
+    ['converting, no job id', videoWith()],
+    ['ready, stale job id', videoWith({ status: 'ready', converter_job_id: 'job-x' })],
+  ])('deletes a video (%s) without calling cancelJob', async (_name, video) => {
     const metadata = new InMemoryMetadataStore();
-    await metadata.save(convertingVideo());
+    await metadata.save(video);
 
     let cancelCalled = false;
     const converter = converterWith({
@@ -80,24 +86,6 @@ describe('deleteVideo', () => {
     expect(result).toBe(true);
     expect(cancelCalled).toBe(false);
     expect(await metadata.get(ID)).toBeNull();
-  });
-
-  it('deletes a ready video without calling cancelJob', async () => {
-    const metadata = new InMemoryMetadataStore();
-    await metadata.save({ ...convertingVideo(), status: 'ready' });
-
-    let cancelCalled = false;
-    const converter = converterWith({
-      cancelJob: async () => { cancelCalled = true; },
-    });
-
-    const result = await deleteVideo(
-      { storage: storageWith(), metadata, converter },
-      ID,
-    );
-
-    expect(result).toBe(true);
-    expect(cancelCalled).toBe(false);
   });
 
   it('returns false when the video does not exist', async () => {
@@ -110,20 +98,5 @@ describe('deleteVideo', () => {
     );
 
     expect(result).toBe(false);
-  });
-
-  it('cleans up the source upload alongside video files', async () => {
-    const metadata = new InMemoryMetadataStore();
-    await metadata.save(convertingVideo({ converter_job_id: 'job-456' }));
-
-    let uploadDeleted = false;
-    const storage = storageWith({
-      deleteUpload: async () => { uploadDeleted = true; },
-    });
-    const converter = converterWith();
-
-    await deleteVideo({ storage, metadata, converter }, ID);
-
-    expect(uploadDeleted).toBe(true);
   });
 });

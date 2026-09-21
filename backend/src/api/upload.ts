@@ -33,7 +33,7 @@ export async function createUpload(
 
   const existing = await deps.metadata.get(sha256);
   if (existing != null && existing.status !== 'failed') {
-    return null; // already uploaded (ready or converting)
+    return null;
   }
 
   const title = input.title?.trim() || stripExtension(input.fileName);

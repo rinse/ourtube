@@ -1,4 +1,4 @@
-import { AppConfig, ConverterType } from './config';
+import { AppConfig } from './config';
 import { MetadataStore } from './metadata/MetadataStore';
 import { DynamoMetadataStore } from './metadata/DynamoMetadataStore';
 import { PlaylistStore } from './playlist/PlaylistStore';
@@ -57,12 +57,12 @@ function createConverter(
     case 'ecs':
       return new EcsFfmpegConverter({
         awsRegion: config.awsRegion,
-        clusterArn: requireConfig(config.converter.ecs.clusterArn, 'ECS_CLUSTER_ARN', 'ecs'),
-        taskDefinitionArn: requireConfig(config.converter.ecs.taskDefinitionArn, 'ECS_TASK_DEFINITION_ARN', 'ecs'),
+        clusterArn: requireConfig(config.converter.ecs.clusterArn, 'ECS_CLUSTER_ARN'),
+        taskDefinitionArn: requireConfig(config.converter.ecs.taskDefinitionArn, 'ECS_TASK_DEFINITION_ARN'),
         // RunTask fails outright with an empty subnets/securityGroups list, so
         // catch that here with the same "which env var" error as the ARNs above.
-        subnetIds: requireList(config.converter.ecs.subnetIds, 'ECS_SUBNET_IDS', 'ecs'),
-        securityGroupIds: requireList(config.converter.ecs.securityGroupIds, 'ECS_SECURITY_GROUP_IDS', 'ecs'),
+        subnetIds: requireList(config.converter.ecs.subnetIds, 'ECS_SUBNET_IDS'),
+        securityGroupIds: requireList(config.converter.ecs.securityGroupIds, 'ECS_SECURITY_GROUP_IDS'),
         containerName: config.converter.ecs.containerName,
       });
     default:
@@ -70,16 +70,16 @@ function createConverter(
   }
 }
 
-function requireConfig(value: string | undefined, name: string, mode: ConverterType): string {
+function requireConfig(value: string | undefined, name: string): string {
   if (!value) {
-    throw new Error(`${name} is required when CONVERTER=${mode}`);
+    throw new Error(`${name} is required when CONVERTER=ecs`);
   }
   return value;
 }
 
-function requireList(value: string[], name: string, mode: ConverterType): string[] {
+function requireList(value: string[], name: string): string[] {
   if (value.length === 0) {
-    throw new Error(`${name} is required when CONVERTER=${mode}`);
+    throw new Error(`${name} is required when CONVERTER=ecs`);
   }
   return value;
 }

@@ -5,10 +5,8 @@ import { DynamoMetadataStore } from './DynamoMetadataStore';
 /**
  * DynamoDB rejects an UpdateExpression that uses a reserved word as a bare
  * attribute name, and only at runtime (ValidationException) — nothing catches
- * it at build time. `updateDuration` shipped that way and every video's
- * duration silently failed to save, because the only caller wraps the write in
- * a try/catch. This asserts the whole family aliases reserved names instead of
- * re-checking one attribute.
+ * it at build time. This asserts the whole family aliases reserved names
+ * instead of re-checking one attribute.
  *
  * Subset of the reserved-word list relevant to this table's attributes:
  * https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ReservedWords.html
@@ -47,15 +45,16 @@ describe('DynamoMetadataStore update expressions', () => {
     }
   });
 
-  it('writes duration under its real attribute name via the alias', async () => {
+  it('writes duration under its real attribute name', async () => {
     const send = vi.spyOn(DynamoDBDocumentClient.prototype, 'send').mockResolvedValue({} as never);
 
     await store().updateDuration('v1', 942);
 
-    const { UpdateExpression, ExpressionAttributeNames, ExpressionAttributeValues } =
+    const { ExpressionAttributeNames, ExpressionAttributeValues } =
       (send.mock.calls[0][0] as any).input;
-    expect(UpdateExpression).toBe('SET #d = :d');
-    expect(ExpressionAttributeNames).toEqual({ '#d': 'duration' });
-    expect(ExpressionAttributeValues).toEqual({ ':d': 942 });
+    // An alias pointing at a misspelled attribute passes the check above and
+    // still loses the write, so pin the target name — not the alias token.
+    expect(Object.values(ExpressionAttributeNames ?? {})).toEqual(['duration']);
+    expect(Object.values(ExpressionAttributeValues)).toEqual([942]);
   });
 });

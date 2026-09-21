@@ -18,7 +18,6 @@ export type AppConfig = {
     forcePathStyle: boolean;
     uploadsPrefix: string;
     videosPrefix: string;
-    /** TTL for presigned PUT/GET URLs, in seconds. */
     presignTtlSeconds: number;
   };
   metadata: {

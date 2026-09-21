@@ -15,19 +15,6 @@ export type EcsFfmpegConverterConfig = {
   containerName: string;
 };
 
-/**
- * Runs a Fargate task whose entrypoint (src/task/convert.ts) is
- * LocalFfmpegConverter.run — the same ffmpeg conversion used for local dev,
- * just packaged as a one-shot container. There is no completion event to wait
- * for on the success path: the task finalizes its own metadata
- * (status / thumbnail / duration) before exiting. The
- * "ECS Task State Change" EventBridge event handled in src/lambda/conversion.ts
- * is only a safety net for tasks that crash before they get the chance to do
- * that (see src/conversion/ecsTaskEvent.ts).
- *
- * `videoId` is threaded through as the container override's VIDEO_ID env var so
- * the task (and that safety-net event) can map back to the DynamoDB record.
- */
 export class EcsFfmpegConverter implements Converter {
   private readonly client: ECSClient;
 

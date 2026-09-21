@@ -29,7 +29,6 @@ function buildDeps(): Dependencies {
     getText: async () => '',
     presignGetFile: async () => 'https://s3.test/x',
     existsFile: async () => true,
-    exists: async () => true,
     delete: async () => true,
     downloadUpload: async () => {},
     deleteUpload: async () => {},
