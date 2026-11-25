@@ -100,3 +100,6 @@ jobs:
           # No CDK_DEFAULT_REGION: the CDK CLI overwrites it in the app
           # subprocess, so the region is pinned in infra/bin/videoplayer.ts.
           BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
+          # Secret, not a variable: Actions logs are public on this repo and
+          # only secrets are masked. Set in both Environments.
+          ALARM_EMAIL: ${{ secrets.ALARM_EMAIL }}
