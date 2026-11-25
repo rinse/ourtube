@@ -26,6 +26,8 @@
    - GitHub OIDC プロバイダ + デプロイ用 IAM ロールを作成
    - リポジトリ Secrets: `AWS_DEPLOY_ROLE_ARN`
    - リポジトリ Variables: `AWS_REGION`, `BEDROCK_MODEL_ID`
+   - Environment Secrets: `ALARM_EMAIL`（CloudWatch アラームの通知先。Actions のログは公開されるため
+     Variables ではなく Secrets に置く。初回デプロイ後に届く SNS の購読確認メールを承認する）
    - **2 つの Environment を用意**（詳細は「3. デプロイの安全弁」）:
      - `production`（必須レビュアーなし。アプリ変更の自動デプロイ用）
      - `production-infra`（必須レビュアーあり。infra/ワークフロー変更・手動起動用）。
