@@ -144,6 +144,28 @@ concurrency:
   リダイレクトされる。platform アカウントでログインすると `session` Cookie が発行される。
 - アップロード → 変換（ECS Fargate の ffmpeg タスク）→ 再生 を確認。
 
+### 自動の安全網（deploy.yml）
+
+デプロイ直後に `scripts/smoke.sh` が、偽の `session` Cookie 付きで `/` が 200（SPA の配信）、
+`/api/videos` が 401（Lambda が起動して認証まで到達）を返すかを確かめる。振る舞いの検証ではなく
+「起動している」ことの確認にとどまる。失敗時の自動対応:
+
+1. **ロールバック**: 直近で成功した Deploy run のコミットを再デプロイする。その間に
+   `infra/` や `.github/workflows/` の変更があれば、古いテンプレートの再適用で元に戻る保証が無いため対象外。
+2. **再確認**: 戻した後にスモーク確認が通れば、コミットが原因と判断して、保守用 GitHub App の
+   トークンで `revert(auto):` の PR を作り auto-merge にかける（自動 revert の revert はしない）。
+   戻しても失敗するなら、コミット以外（auth.app.esnir.net、CloudFront、AWS）を疑い revert しない。
+3. **Issue 化**: どの段階で失敗しても、経緯を書いた Issue（`bug`）をリポジトリ所有者に assign する。
+   これが通知の経路になる。
+
+ロールバックした run も failure で終わる。そのため「直近で成功した Deploy run」は常に最後に正常だったデプロイを指す。
+
+**訓練**: Actions の Deploy を `drill: true` で手動起動すると、スモーク確認を強制的に失敗させ、
+ロールバック → 再確認 → Issue 化までを通す（revert PR は作らない）。手動起動なので承認が要る。
+
+**必要な Secrets**（リポジトリの Actions Secrets）: `MAINT_APP_CLIENT_ID`、`MAINT_APP_PRIVATE_KEY`。
+`GITHUB_TOKEN` で作った push や PR はワークフローを起動しないため、revert PR に CI を走らせるには App が要る。
+
 ### CfnOutput
 
 | 出力 | 用途 |

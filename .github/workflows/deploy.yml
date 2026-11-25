@@ -16,6 +16,11 @@ on:
       - '**.md'
       - 'docs/**'
   workflow_dispatch:
+    inputs:
+      drill:
+        description: 障害対応の訓練（スモークを強制失敗させ、ロールバックと Issue 化を通す。revert PR は作らない）
+        type: boolean
+        default: false
 
 # 同一スタックへのデプロイを直列化する。cancel-in-progress は使わない —
 # 進行中の CDK/CloudFormation デプロイを途中で打ち切るとスタックが
@@ -27,6 +32,11 @@ concurrency:
 permissions:
   id-token: write # OIDC for AWS
   contents: read
+  actions: read # find the last successful deploy (rollback target)
+  issues: write # file the incident issue
+
+env:
+  SITE_URL: https://ourtube.app.esnir.net
 
 jobs:
   # Decide whether this deploy needs human approval. infra/** or workflow
@@ -66,6 +76,13 @@ jobs:
         # No `ref:` — checkout defaults to the triggering ref: the pushed commit
         # on `main` for push events, or the branch chosen in "Use workflow from"
         # for a manual dispatch. Either way that ref is what gets deployed.
+        # Full history: rollback checks out the last good commit and the
+        # auto-revert reverts the range since it. No persisted credentials:
+        # nothing here needs GITHUB_TOKEN for git (public repo), and the
+        # revert push must authenticate as the App, not as GITHUB_TOKEN.
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-node@v6
         with:
@@ -92,6 +109,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: CDK deploy
+        id: cdk
         # Two stacks (OurtubeCertStack in us-east-1 + VideoplayerStack), so
         # --all is required to select both.
         run: npx cdk deploy --all --require-approval never
@@ -103,3 +121,171 @@ jobs:
           # Secret, not a variable: Actions logs are public on this repo and
           # only secrets are masked. Set in both Environments.
           ALARM_EMAIL: ${{ secrets.ALARM_EMAIL }}
+
+      # --- Post-deploy safety net -------------------------------------------
+      # Smoke fails → roll back to the last good deploy → re-smoke → if that
+      # passes, the pushed commits were the cause: open an auto-merged revert
+      # PR so main matches what runs. Any failure files an incident issue
+      # assigned to the repo owner (the notification channel: auto-merged
+      # pushes are made by an App, so Actions failure mails reach nobody).
+      # The job still ends as failure after a rollback, which is what keeps
+      # "last successful Deploy run" meaning "last good deploy".
+
+      - name: Smoke test
+        id: smoke
+        run: scripts/smoke.sh "$SITE_URL"
+        env:
+          SMOKE_FORCE_FAIL: ${{ inputs.drill && '1' || '' }}
+
+      # App-only ranges only: redeploying an older CDK template does not
+      # reliably undo infra changes (deleted resources, cross-region refs).
+      # Judged on the real range since the last good deploy, not on `detect`:
+      # detect diffs against github.event.before, which a replaced pending run
+      # may never have deployed, and it reports infra for every dispatch.
+      - name: Find the last good deploy
+        id: lastgood
+        if: failure() && steps.smoke.outcome == 'failure'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRILL: ${{ inputs.drill && '1' || '' }}
+        run: |
+          skip() { echo "reason=$1" >> "$GITHUB_OUTPUT"; exit 1; }
+          sha=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy.yml --branch main \
+            --status success --limit 1 --json headSha --jq '.[0].headSha // empty')
+          [[ -n "$sha" ]] || skip "直前の成功デプロイが見つからない"
+          git diff --quiet "$sha" "$GITHUB_SHA" -- infra/ .github/workflows/ \
+            || skip "前回の正常なデプロイ以降に infra / workflow の変更を含むため、手動で判断する"
+          # A drill must be a strict no-op redeploy.
+          if [[ -n "$DRILL" ]]; then
+            git diff --quiet "$sha" "$GITHUB_SHA" -- . ':(exclude)*.md' ':(exclude)docs/**' \
+              || skip "訓練は前回の正常なデプロイから変更が無いときだけロールバックする"
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Roll back to the last good deploy
+        id: rollback
+        if: failure() && steps.lastgood.outputs.sha != ''
+        continue-on-error: true
+        env:
+          LAST_GOOD: ${{ steps.lastgood.outputs.sha }}
+          BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
+          ALARM_EMAIL: ${{ secrets.ALARM_EMAIL }}
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/last-good"
+          git worktree add --detach "$dir" "$LAST_GOOD"
+          cd "$dir"
+          (cd backend && npm ci)
+          (cd frontend && npm ci && NEXT_EXPORT=true npm run build)
+          cd infra && npm ci && npx cdk deploy --all --require-approval never
+
+      - name: Smoke test after rollback
+        id: resmoke
+        if: failure() && steps.rollback.outcome == 'success'
+        continue-on-error: true
+        run: scripts/smoke.sh "$SITE_URL"
+
+      # A token from the maintenance App, not GITHUB_TOKEN: pushes and PRs made
+      # with GITHUB_TOKEN trigger no workflows, so CI would never run on the
+      # revert PR and auto-merge would wait forever.
+      - name: Mint the maintenance App token
+        id: app
+        if: failure() && steps.resmoke.outcome == 'success' && !inputs.drill
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.MAINT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.MAINT_APP_PRIVATE_KEY }}
+
+      - name: Open an auto-merged revert PR
+        id: revert
+        if: failure() && steps.app.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          LAST_GOOD: ${{ steps.lastgood.outputs.sha }}
+        run: |
+          set -euo pipefail
+          note() { echo "note=$1" >> "$GITHUB_OUTPUT"; }
+          # Loop guard: never revert a revert.
+          if [[ "$(git log -1 --format=%s "$GITHUB_SHA")" == 'revert(auto):'* ]]; then
+            note "HEAD 自体が自動 revert なので、ループを避けて revert しない"; exit 1
+          fi
+          # Docs-only commits never deployed anything; leave them alone.
+          mapfile -t commits < <(git rev-list "$LAST_GOOD..$GITHUB_SHA" -- . ':(exclude)*.md' ':(exclude)docs/**')
+          if ((${#commits[@]} == 0)); then note "戻すべきコミットが無い"; exit 1; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          branch="auto-revert/${GITHUB_SHA::7}"
+          git fetch origin main
+          git switch -c "$branch" origin/main
+          git revert --no-edit "${commits[@]}" || { note "revert がコンフリクトした"; exit 1; }
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$branch"
+          url=$(gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" \
+            --title "revert(auto): デプロイ後の確認に失敗した ${GITHUB_SHA::7} を戻す" \
+            --body "Deploy の自動対応で作成。ロールバック済みの本番（${LAST_GOOD::7}）に main を揃える。経緯: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
+          echo "pr=$url" >> "$GITHUB_OUTPUT"
+          gh pr merge --auto --squash "$url"
+
+      - name: File an incident issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRILL: ${{ inputs.drill && '1' || '' }}
+          INFRA: ${{ needs.detect.outputs.infra }}
+          CDK: ${{ steps.cdk.outcome }}
+          SMOKE: ${{ steps.smoke.outcome }}
+          LAST_GOOD: ${{ steps.lastgood.outputs.sha }}
+          LASTGOOD_OUTCOME: ${{ steps.lastgood.outcome }}
+          LASTGOOD_REASON: ${{ steps.lastgood.outputs.reason }}
+          ROLLBACK: ${{ steps.rollback.outcome }}
+          RESMOKE: ${{ steps.resmoke.outcome }}
+          APP: ${{ steps.app.outcome }}
+          REVERT: ${{ steps.revert.outcome }}
+          REVERT_PR: ${{ steps.revert.outputs.pr }}
+          REVERT_NOTE: ${{ steps.revert.outputs.note }}
+        run: |
+          set -euo pipefail
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          subject=$(git log -1 --format=%s "$GITHUB_SHA")
+          if [[ "$SMOKE" == failure ]]; then stage="デプロイ後のスモーク確認"
+          elif [[ "$CDK" == failure ]]; then stage="CDK デプロイ（CloudFormation 側で自動ロールバック済みのはず）"
+          else stage="ビルド・準備"; fi
+
+          if [[ "$SMOKE" != failure ]]; then rollback="対象外（スモーク確認まで到達していない）"
+          elif [[ "$LASTGOOD_OUTCOME" != success ]]; then rollback="対象外（${LASTGOOD_REASON:-判定に失敗。ログ参照}）"
+          elif [[ "$ROLLBACK" != success ]]; then rollback="**失敗**（${LAST_GOOD::7} へのデプロイが失敗。本番は壊れたままの可能性）"
+          elif [[ "$RESMOKE" == success ]]; then rollback="成功（${LAST_GOOD::7} に戻し、スモーク確認も通過）"
+          else rollback="実施したが、戻した後もスモーク確認が失敗。**コミット以外の原因**（auth.app.esnir.net、CloudFront、AWS）を疑う"; fi
+
+          if [[ -n "$REVERT_PR" ]]; then revert="$REVERT_PR（auto-merge 設定済み）"
+          elif [[ -n "$DRILL" ]]; then revert="訓練のため作らない"
+          elif [[ "$ROLLBACK" != success ]]; then revert="対象外（ロールバックしていない）"
+          elif [[ "$RESMOKE" != success ]]; then revert="作らない（戻しても直らず、コミットが原因とは言えない）"
+          elif [[ "$APP" != success ]]; then revert="作れず（保守用 App のトークンを取得できない。Secrets を確認）"
+          else revert="作れず: ${REVERT_NOTE:-失敗（ログ参照）}"; fi
+
+          title="障害: Deploy が${stage%%（*}で失敗 (${GITHUB_SHA::7})"
+          [[ -n "$DRILL" ]] && title="[訓練] $title"
+          body="$RUNNER_TEMP/incident.md"
+          cat > "$body" <<MD
+          ## 何が起きたか
+
+          - 対象: ${GITHUB_SHA::7} ${subject}
+          - 失敗した段階: ${stage}
+          - 変更の種類: $([[ "$INFRA" == true ]] && echo "infra / workflow を含む" || echo "アプリのみ")
+          - 実行: ${run_url}
+
+          ## 自動対応
+
+          - ロールバック: ${rollback}
+          - revert PR: ${revert}
+
+          ## 人間に必要な対応
+
+          - 本番が復旧しているか確かめる（ロールバックが成功していなければ最優先）
+          - 原因を調べ、修正を入れる。revert PR がある場合、修正はその後のコミットとして入れる
+          MD
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$body" \
+            --label bug --assignee "$GITHUB_REPOSITORY_OWNER"
