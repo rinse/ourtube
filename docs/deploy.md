@@ -146,9 +146,16 @@ concurrency:
 
 ### 自動の安全網（deploy.yml）
 
-デプロイ直後に `scripts/smoke.sh` が、偽の `session` Cookie 付きで `/` が 200（SPA の配信）、
+デプロイ直後に、偽の `session` Cookie 付きで `/` が 200（SPA の配信）、
 `/api/videos` が 401（Lambda が起動して認証まで到達）を返すかを確かめる。振る舞いの検証ではなく
-「起動している」ことの確認にとどまる。失敗時の自動対応:
+「起動している」ことの確認にとどまる。
+
+CloudFront は Geo 制限で日本からのアクセスしか通さず、GitHub のランナーは日本に無い。そのため確認そのものは
+東京リージョンの Lambda `ourtube-smoke`（`infra/lambda/smoke`）が CloudFront 経由で行い、`scripts/smoke.sh` は
+デプロイ用ロールの認証でそれを呼ぶ。呼び出しの許可は Lambda 側のリソースポリシーで与える（CDK の
+`SMOKE_INVOKER_ARN` に `AWS_DEPLOY_ROLE_ARN` を渡す。手作業の IAM 変更は不要）。
+
+失敗時の自動対応:
 
 1. **ロールバック**: 直近で成功した Deploy run のコミットを再デプロイする。その間に
    `infra/` や `.github/workflows/` の変更があれば、古いテンプレートの再適用で元に戻る保証が無いため対象外。

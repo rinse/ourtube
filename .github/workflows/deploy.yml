@@ -35,9 +35,6 @@ permissions:
   actions: read # find the last successful deploy (rollback target)
   issues: write # file the incident issue
 
-env:
-  SITE_URL: https://ourtube.app.esnir.net
-
 jobs:
   # Decide whether this deploy needs human approval. infra/** or workflow
   # changes → approval (production-infra). Manual dispatch is always treated as
@@ -121,6 +118,8 @@ jobs:
           # Secret, not a variable: Actions logs are public on this repo and
           # only secrets are masked. Set in both Environments.
           ALARM_EMAIL: ${{ secrets.ALARM_EMAIL }}
+          # Lets this role invoke the smoke probe Lambda (scripts/smoke.sh).
+          SMOKE_INVOKER_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
 
       # --- Post-deploy safety net -------------------------------------------
       # Smoke fails → roll back to the last good deploy → re-smoke → if that
@@ -133,7 +132,7 @@ jobs:
 
       - name: Smoke test
         id: smoke
-        run: scripts/smoke.sh "$SITE_URL"
+        run: scripts/smoke.sh
         env:
           SMOKE_FORCE_FAIL: ${{ inputs.drill && '1' || '' }}
 
@@ -171,6 +170,8 @@ jobs:
           LAST_GOOD: ${{ steps.lastgood.outputs.sha }}
           BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
           ALARM_EMAIL: ${{ secrets.ALARM_EMAIL }}
+          # Lets this role invoke the smoke probe Lambda (scripts/smoke.sh).
+          SMOKE_INVOKER_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
         run: |
           set -euo pipefail
           dir="$RUNNER_TEMP/last-good"
@@ -184,7 +185,7 @@ jobs:
         id: resmoke
         if: failure() && steps.rollback.outcome == 'success'
         continue-on-error: true
-        run: scripts/smoke.sh "$SITE_URL"
+        run: scripts/smoke.sh
 
       # A token from the maintenance App, not GITHUB_TOKEN: pushes and PRs made
       # with GITHUB_TOKEN trigger no workflows, so CI would never run on the
