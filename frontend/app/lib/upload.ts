@@ -11,6 +11,12 @@ export type UploadProgress = {
   fraction: number;
 };
 
+export class DuplicateUploadError extends Error {
+  constructor() {
+    super('この動画は既にアップロード済みです');
+  }
+}
+
 /**
  * Full browser-driven upload: hash -> request presigned PUT (with dedup) ->
  * upload bytes straight to S3/MinIO -> tell the API to start conversion.
@@ -40,7 +46,7 @@ export async function uploadVideo(
     }),
   });
   if (createRes.status === 409) {
-    throw new Error('この動画は既にアップロード済みです');
+    throw new DuplicateUploadError();
   }
   if (!createRes.ok) {
     const data = await createRes.json().catch(() => ({}));
