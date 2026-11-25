@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, ChangeEvent, FormEvent, useEffect } from 'react'
+import { useState, ChangeEvent, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Header from '../components/Header'
 import { apiFetch } from '../lib/api'
-import { uploadVideo, UploadProgress } from '../lib/upload'
+import { uploadVideo, UploadProgress, DuplicateUploadError } from '../lib/upload'
 
 const PHASE_LABEL: Record<UploadProgress['phase'], string> = {
   hashing: 'ハッシュ計算中',
@@ -13,69 +13,96 @@ const PHASE_LABEL: Record<UploadProgress['phase'], string> = {
   finalizing: '変換開始中',
 }
 
+type Item = {
+  id: number
+  file: File
+  title: string
+  isSuggestingTitle: boolean
+  progress: UploadProgress | null
+  done: boolean
+  /** Done because the server already had it (409). */
+  skipped: boolean
+  error: string | null
+}
+
+let nextId = 0
+
+async function suggestTitle(fileName: string): Promise<string | null> {
+  try {
+    const response = await apiFetch('/api/suggest-video-title', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName }),
+      // Uploading waits for every suggestion, so a hung LLM call must not block it.
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (response.ok) return (await response.json()).suggestedTitle
+  } catch (err) {
+    console.error('Failed to fetch title suggestion:', err)
+  }
+  return null
+}
+
 export default function UploadPage() {
   const router = useRouter()
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [title, setTitle] = useState('')
+  const [items, setItems] = useState<Item[]>([])
   const [isUploading, setIsUploading] = useState(false)
-  const [progress, setProgress] = useState<UploadProgress | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [isSuggestingTitle, setIsSuggestingTitle] = useState(false)
 
-  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setSelectedFile(file)
-      setError(null)
-      setTitle('')
+  const update = (id: number, patch: Partial<Item>) =>
+    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)))
+
+  const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0) return
+    const next = files.map((file) => ({
+      id: nextId++,
+      file,
+      title: '',
+      isSuggestingTitle: true,
+      progress: null,
+      done: false,
+      skipped: false,
+      error: null,
+    }))
+    setItems(next)
+    // One at a time: each call is an LLM request, and firing N at once can hit
+    // the API Lambda's reserved concurrency (10) and its throttle alarm.
+    for (const it of next) {
+      update(it.id, { isSuggestingTitle: false, title: (await suggestTitle(it.file.name)) ?? '' })
     }
   }
-
-  // Fetch a title suggestion when a file is selected.
-  useEffect(() => {
-    if (!selectedFile || title) return
-    const fetchTitleSuggestion = async () => {
-      setIsSuggestingTitle(true)
-      try {
-        const response = await apiFetch('/api/suggest-video-title', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileName: selectedFile.name }),
-        })
-        if (response.ok) {
-          const data = await response.json()
-          setTitle(data.suggestedTitle)
-        }
-      } catch (err) {
-        console.error('Failed to fetch title suggestion:', err)
-      } finally {
-        setIsSuggestingTitle(false)
-      }
-    }
-    fetchTitleSuggestion()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedFile])
 
   const handleUpload = async (e: FormEvent) => {
     e.preventDefault()
-    setError(null)
-    if (!selectedFile) {
-      setError('動画ファイルを選択してください')
-      return
-    }
     setIsUploading(true)
-    setProgress({ phase: 'hashing', fraction: 0 })
-    try {
-      await uploadVideo(selectedFile, title, setProgress)
-      router.push('/')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'アップロードに失敗しました')
-      console.error('Upload error:', err)
-    } finally {
-      setIsUploading(false)
-      setProgress(null)
+    let allFresh = true
+    // One at a time: parallel PUTs would just split the same uplink bandwidth.
+    for (const it of items) {
+      if (it.done) continue
+      update(it.id, { error: null, progress: { phase: 'hashing', fraction: 0 } })
+      try {
+        await uploadVideo(it.file, it.title, (progress) => update(it.id, { progress }))
+        update(it.id, { done: true, progress: null })
+      } catch (err) {
+        allFresh = false
+        if (err instanceof DuplicateUploadError) {
+          update(it.id, { done: true, skipped: true, progress: null })
+          continue
+        }
+        console.error('Upload error:', err)
+        update(it.id, {
+          error: err instanceof Error ? err.message : 'アップロードに失敗しました',
+          progress: null,
+        })
+      }
     }
+    setIsUploading(false)
+    // Stay on the page when anything was skipped or failed so the user sees why.
+    if (allFresh) router.push('/')
   }
+
+  const pending = items.filter((it) => !it.done).length
+  const canSubmit = !isUploading && pending > 0 && !items.some((it) => it.isSuggestingTitle)
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -84,75 +111,78 @@ export default function UploadPage() {
         <div className="max-w-2xl mx-auto">
           <div className="mb-6">
             <h2 className="text-xl font-semibold text-gray-800 mb-2">動画をアップロード</h2>
-            <p className="text-gray-600">動画ファイルを選択するとブラウザでハッシュ化し、S3へ直接アップロードします</p>
+            <p className="text-gray-600">動画ファイルを選択するとブラウザでハッシュ化し、S3へ直接アップロードします（複数選択可）</p>
           </div>
 
           <form onSubmit={handleUpload} className="bg-white rounded-lg shadow-lg p-8 space-y-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">動画ファイル</label>
-              <div className="flex items-center space-x-3">
-                <input type="file" id="fileInput" accept="video/*,.mkv" onChange={handleFileSelect} className="hidden" />
-                <label htmlFor="fileInput" className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg cursor-pointer transition-colors font-medium">
-                  ファイルを選択
-                </label>
-                {selectedFile && (
-                  <span className="text-sm text-gray-600">{selectedFile.name}</span>
+              <input type="file" id="fileInput" accept="video/*,.mkv" multiple onChange={handleFileSelect} className="sr-only peer" disabled={isUploading} />
+              <label htmlFor="fileInput" className="inline-block px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg cursor-pointer transition-colors font-medium peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 peer-disabled:opacity-50 peer-disabled:cursor-not-allowed">
+                ファイルを選択
+              </label>
+            </div>
+
+            {items.map((it) => (
+              <div key={it.id} className="border border-gray-200 rounded-lg p-4 space-y-3">
+                <p id={`file-${it.id}`} className="text-sm text-gray-600 break-all">{it.file.name}</p>
+                <div>
+                  <label htmlFor={`title-${it.id}`} className="block text-sm font-medium text-gray-700 mb-1">
+                    タイトル（任意）
+                    {it.isSuggestingTitle && <span className="ml-2 text-sm text-blue-600">サジェスト中...</span>}
+                  </label>
+                  <input
+                    type="text"
+                    id={`title-${it.id}`}
+                    aria-describedby={`file-${it.id}`}
+                    value={it.title}
+                    onChange={(e) => update(it.id, { title: e.target.value })}
+                    placeholder={it.isSuggestingTitle ? '生成中...' : 'ファイル名を使用します'}
+                    className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    disabled={it.isSuggestingTitle || it.done || isUploading}
+                  />
+                </div>
+
+                {it.progress && (
+                  <div>
+                    <div className="flex justify-between text-sm text-gray-600 mb-1">
+                      <span>{PHASE_LABEL[it.progress.phase]}</span>
+                      <span>{Math.round(it.progress.fraction * 100)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div className="bg-blue-600 h-2 rounded-full transition-all" style={{ width: `${Math.round(it.progress.fraction * 100)}%` }} />
+                    </div>
+                  </div>
+                )}
+
+                {it.done && !it.skipped && <p className="text-sm text-green-700">アップロード完了</p>}
+                {it.skipped && <p className="text-sm text-gray-600">既にアップロード済みのためスキップしました</p>}
+
+                {it.error && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-700">{it.error}</p>
+                  </div>
                 )}
               </div>
-            </div>
-
-            <div>
-              <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
-                タイトル（任意）
-                {isSuggestingTitle && <span className="ml-2 text-sm text-blue-600">サジェスト中...</span>}
-              </label>
-              <input
-                type="text"
-                id="title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder={isSuggestingTitle ? '生成中...' : 'ファイル名を使用します'}
-                className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                disabled={isSuggestingTitle}
-              />
-            </div>
-
-            {progress && (
-              <div>
-                <div className="flex justify-between text-sm text-gray-600 mb-1">
-                  <span>{PHASE_LABEL[progress.phase]}</span>
-                  <span>{Math.round(progress.fraction * 100)}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-blue-600 h-2 rounded-full transition-all" style={{ width: `${Math.round(progress.fraction * 100)}%` }} />
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-sm text-red-700">{error}</p>
-              </div>
-            )}
+            ))}
 
             <div className="flex space-x-4 pt-4">
               <button
                 type="submit"
-                disabled={isUploading || !selectedFile}
+                disabled={!canSubmit}
                 className={`flex-1 py-3 px-6 rounded-lg font-medium transition-colors ${
-                  isUploading || !selectedFile
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  canSubmit ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}
               >
-                {isUploading ? 'アップロード中...' : 'アップロード'}
+                {isUploading ? 'アップロード中...' : pending > 1 ? `${pending} 件をアップロード` : 'アップロード'}
               </button>
               <button
                 type="button"
                 onClick={() => router.push('/')}
-                className="px-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-colors"
+                disabled={isUploading}
+                className="disabled:opacity-50 disabled:cursor-not-allowed px-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-colors"
               >
-                キャンセル
+                {items.length > 0 && pending === 0 ? '一覧へ戻る' : 'キャンセル'}
               </button>
             </div>
           </form>
