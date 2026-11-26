@@ -144,11 +144,6 @@ jobs:
         env:
           SMOKE_FORCE_FAIL: ${{ inputs.drill && '1' || '' }}
 
-      # App-only ranges only: redeploying an older CDK template does not
-      # reliably undo infra changes (deleted resources, cross-region refs).
-      # Judged on the real range since the last good deploy, not on `detect`:
-      # detect diffs against github.event.before, which a replaced pending run
-      # may never have deployed, and it reports infra for every dispatch.
       # Stop the line first, before the minutes of rollback: an auto-merge
       # queued before this failure would land on top of it.
       # dependabot-auto-merge.yml won't turn it back on while the incident
@@ -170,6 +165,10 @@ jobs:
           echo "prs=${paused[*]}" >> "$GITHUB_OUTPUT"
           exit "$failed"
 
+      # App-only ranges only: redeploying an older CDK template does not
+      # reliably undo infra changes (deleted resources, cross-region refs).
+      # Judged here on the range since the last good deploy rather than reused
+      # from `detect`, which reports infra for every dispatch (drills included).
       - name: Find the last good deploy
         id: lastgood
         if: failure() && steps.smoke.outcome == 'failure'
