@@ -1,0 +1,22 @@
+# Version updates. Security updates come from the repo setting regardless.
+# Which of these PRs merge without a human is decided by
+# .github/workflows/dependabot-auto-merge.yml, not here.
+# Dependabot already waits 3 days after a release (default cooldown).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /infra
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

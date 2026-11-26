@@ -193,6 +193,8 @@ Dependabot の PR のうち、人間の判断が要らないものだけ auto-me
   安全網が auto-merge を解除するので、人間が障害 Issue を close するまでラインは止まる。close した後、
   止めた PR に `@dependabot rebase` とコメントすると判定がやり直される。
 - Dependabot の PR に Dependabot 以外のコミットが積まれていると、メタデータが取れずに対象外になる。
+- バージョン更新（`.github/dependabot.yml`、週 1 回）はリリースから 3 日経ってから届く（Dependabot の
+  既定の cooldown）。セキュリティ更新はすぐ届く。
 - auto-merge の有効化には保守用 App のトークンを使う。`GITHUB_TOKEN` でマージした push はデプロイを起動しない。
   App のトークンは Dependabot の run から使うため、`MAINT_APP_CLIENT_ID` と `MAINT_APP_PRIVATE_KEY` は
   Dependabot secrets にも登録しておく。
