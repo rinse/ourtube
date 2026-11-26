@@ -208,7 +208,8 @@ Dependabot PR を置き換える PR（`loop/<Issue 番号>` ブランチ、ド�
 - クラウドのセッションではプラグインが読み込まれないため、タスクのソースに `rinse/skills` も clone させ、
   loop-dev の SKILL.md を直接読ませている。
 - クラウドからは GitHub の GraphQL が使えないので、GitHub の操作は `gh api` の REST で行わせている。
-  リモートのブランチは消せないため、`loop/*` ブランチは人間が片付ける。
+  クラウドからはリモートのブランチを消せない。マージした PR のブランチは GitHub が自動で消すが、
+  差し戻しで残った `loop/*` ブランチは人間が片付ける。
 - エージェントが差し戻した Issue は `ready` が外れたまま残る。直して `ready` を付け直せば再び処理される。
 
 ### CfnOutput
