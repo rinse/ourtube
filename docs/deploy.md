@@ -185,7 +185,7 @@ Dependabot の PR のうち、人間の判断が要らないものだけ auto-me
 | 対象 | 自動マージ |
 |---|---|
 | `/backend` の npm（patch / minor） | する |
-| `/frontend` の npm（patch） | する（テストが無いので minor は人間が見る） |
+| `/frontend` の npm（patch / minor） | する（ブラウザでのスモークテスト `frontend/e2e` が CI で走る） |
 | `/infra` の npm、GitHub Actions、major、メタデータが取れないもの | しない |
 | パッケージのメンテナが変わったもの | しない |
 
