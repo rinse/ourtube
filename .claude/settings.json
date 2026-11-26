@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "rinse": {
+      "source": { "source": "github", "repo": "rinse/skills" }
+    }
+  },
+  "enabledPlugins": {
+    "loop-dev@rinse": true
+  }
+}
