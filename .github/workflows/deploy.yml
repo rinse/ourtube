@@ -34,6 +34,7 @@ permissions:
   contents: read
   actions: read # find the last successful deploy (rollback target)
   issues: write # file the incident issue
+  pull-requests: write # pause Dependabot auto-merge on failure
 
 jobs:
   # Decide whether this deploy needs human approval. infra/** or workflow
@@ -148,6 +149,27 @@ jobs:
       # Judged on the real range since the last good deploy, not on `detect`:
       # detect diffs against github.event.before, which a replaced pending run
       # may never have deployed, and it reports infra for every dispatch.
+      # Stop the line first, before the minutes of rollback: an auto-merge
+      # queued before this failure would land on top of it.
+      # dependabot-auto-merge.yml won't turn it back on while the incident
+      # issue is open. A drill leaves real PRs alone.
+      - name: Pause Dependabot auto-merge
+        id: pause
+        if: failure() && !inputs.drill
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --author app/dependabot --state open --limit 100 \
+            --json number,autoMergeRequest --jq '.[] | select(.autoMergeRequest) | .number')
+          paused=() failed=0
+          for n in $prs; do
+            if gh pr merge --repo "$GITHUB_REPOSITORY" --disable-auto "$n"; then paused+=("#$n"); else failed=1; fi
+          done
+          echo "prs=${paused[*]}" >> "$GITHUB_OUTPUT"
+          exit "$failed"
+
       - name: Find the last good deploy
         id: lastgood
         if: failure() && steps.smoke.outcome == 'failure'
@@ -253,6 +275,8 @@ jobs:
           REVERT: ${{ steps.revert.outcome }}
           REVERT_PR: ${{ steps.revert.outputs.pr }}
           REVERT_NOTE: ${{ steps.revert.outputs.note }}
+          PAUSE: ${{ steps.pause.outcome }}
+          PAUSED: ${{ steps.pause.outputs.prs }}
         run: |
           set -euo pipefail
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
@@ -274,6 +298,11 @@ jobs:
           elif [[ "$APP" != success ]]; then revert="作れず（保守用 App のトークンを取得できない。Secrets を確認）"
           else revert="作れず: ${REVERT_NOTE:-失敗（ログ参照）}"; fi
 
+          if [[ -n "$DRILL" ]]; then pause="訓練のため止めない"
+          elif [[ "$PAUSE" != success ]]; then pause="**止められなかった PR がある**（止めたもの: ${PAUSED:-なし}。ログ参照）"
+          elif [[ -n "$PAUSED" ]]; then pause="止めた（${PAUSED}）"
+          else pause="止める対象なし"; fi
+
           title="障害: Deploy が${stage%%（*}で失敗 (${GITHUB_SHA::7})"
           [[ -n "$DRILL" ]] && title="[訓練] $title"
           body="$RUNNER_TEMP/incident.md"
@@ -289,11 +318,13 @@ jobs:
 
           - ロールバック: ${rollback}
           - revert PR: ${revert}
+          - Dependabot の auto-merge: ${pause}
 
           ## 人間に必要な対応
 
           - 本番が復旧しているか確かめる（ロールバックが成功していなければ最優先）
           - 原因を調べ、修正を入れる。revert PR がある場合、修正はその後のコミットとして入れる
+          - この Issue を close するまで Dependabot PR は自動マージされない。close した後、止めた PR に \`@dependabot rebase\` とコメントすると自動マージの判定がやり直される
           MD
           gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$body" \
             --label bug --assignee "$GITHUB_REPOSITORY_OWNER"

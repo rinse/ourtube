@@ -1,0 +1,67 @@
+name: Dependabot auto-merge
+
+# Turns on auto-merge for Dependabot PRs that need no human judgement. The
+# merge itself still waits for the required checks (backend/frontend/infra),
+# and the push to main then deploys through deploy.yml's safety net.
+#
+# Merged automatically: npm in /backend (patch, minor), npm in /frontend
+# (patch only; it has no tests yet). Everything else — /infra, GitHub
+# Actions, majors, unknown metadata — is left for a human.
+#
+# While an incident issue (title starting with "障害:") is open, nothing is
+# turned on: deploy.yml pauses auto-merge on failure and the line stays
+# stopped until a human closes the incident.
+#
+# The App token, not GITHUB_TOKEN, enables the merge: a push made with
+# GITHUB_TOKEN does not trigger deploy.yml.
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  auto-merge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      # Verifies every commit is Dependabot's, so a commit pushed onto a
+      # Dependabot branch by someone else empties the outputs (→ no merge).
+      - id: meta
+        uses: dependabot/fetch-metadata@v3
+
+      - id: policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ECOSYSTEM: ${{ steps.meta.outputs.package-ecosystem }}
+          DIR: ${{ steps.meta.outputs.directory }}
+          UPDATE: ${{ steps.meta.outputs.update-type }}
+          MAINTAINER_CHANGES: ${{ steps.meta.outputs.maintainer-changes }}
+        run: |
+          skip() { echo "自動マージしない: $1"; exit 0; }
+          [[ "$ECOSYSTEM" == npm_and_yarn || "$ECOSYSTEM" == npm ]] || skip "ecosystem '$ECOSYSTEM'"
+          [[ "$MAINTAINER_CHANGES" != true ]] || skip "パッケージのメンテナが変わった"
+          case "$DIR $UPDATE" in
+            "/backend version-update:semver-patch" | "/backend version-update:semver-minor" | \
+              "/frontend version-update:semver-patch") ;;
+            *) skip "'$DIR' の '$UPDATE' は対象外" ;;
+          esac
+          # List API, not search: search can lag behind a just-filed issue.
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label bug --limit 100 \
+            --json title --jq '[.[] | select(.title | startswith("障害:"))] | length')
+          [[ "$open" == 0 ]] || skip "未解決の障害 Issue がある"
+          echo "merge=true" >> "$GITHUB_OUTPUT"
+
+      - id: app
+        if: steps.policy.outputs.merge == 'true'
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.MAINT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.MAINT_APP_PRIVATE_KEY }}
+
+      - if: steps.policy.outputs.merge == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR"

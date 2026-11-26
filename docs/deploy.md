@@ -159,21 +159,43 @@ CloudFront は Geo 制限で日本からのアクセスしか通さず、GitHub 
 
 失敗時の自動対応:
 
-1. **ロールバック**: 直近で成功した Deploy run のコミットを再デプロイする。その間に
+1. **Dependabot の自動マージを止める**: auto-merge が有効な Dependabot PR を、何より先に解除する。待機中の
+   PR が壊れたデプロイの上に積み重ならないようにするため（下の「Dependabot の自動マージ」を参照）。
+2. **ロールバック**: 直近で成功した Deploy run のコミットを再デプロイする。その間に
    `infra/` や `.github/workflows/` の変更があれば、古いテンプレートの再適用で元に戻る保証が無いため対象外。
-2. **再確認**: 戻した後にスモーク確認が通れば、コミットが原因と判断して、保守用 GitHub App の
+3. **再確認**: 戻した後にスモーク確認が通れば、コミットが原因と判断して、保守用 GitHub App の
    トークンで `revert(auto):` の PR を作り auto-merge にかける（自動 revert の revert はしない）。
    戻しても失敗するなら、コミット以外（auth.app.esnir.net、CloudFront、AWS）を疑い revert しない。
-3. **Issue 化**: どの段階で失敗しても、経緯を書いた Issue（`bug`）をリポジトリ所有者に assign する。
+4. **Issue 化**: どの段階で失敗しても、経緯を書いた Issue（`bug`）をリポジトリ所有者に assign する。
    これが通知の経路になる。
 
 ロールバックした run も failure で終わる。そのため「直近で成功した Deploy run」は常に最後に正常だったデプロイを指す。
 
 **訓練**: Actions の Deploy を `drill: true` で手動起動すると、スモーク確認を強制的に失敗させ、
-ロールバック → 再確認 → Issue 化までを通す（revert PR は作らない）。手動起動なので承認が要る。
+ロールバック → 再確認 → Issue 化までを通す（revert PR は作らず、Dependabot の auto-merge も止めない）。手動起動なので承認が要る。
 
 **必要な Secrets**（リポジトリの Actions Secrets）: `MAINT_APP_CLIENT_ID`、`MAINT_APP_PRIVATE_KEY`。
 `GITHUB_TOKEN` で作った push や PR はワークフローを起動しないため、revert PR に CI を走らせるには App が要る。
+
+### Dependabot の自動マージ（dependabot-auto-merge.yml）
+
+Dependabot の PR のうち、人間の判断が要らないものだけ auto-merge を有効にする。マージは必須チェック
+（backend / frontend / infra）が通ってからで、main への push は上の安全網を通ってデプロイされる。
+
+| 対象 | 自動マージ |
+|---|---|
+| `/backend` の npm（patch / minor） | する |
+| `/frontend` の npm（patch） | する（テストが無いので minor は人間が見る） |
+| `/infra` の npm、GitHub Actions、major、メタデータが取れないもの | しない |
+| パッケージのメンテナが変わったもの | しない |
+
+- タイトルが `障害:` で始まる Issue が open の間は、どの PR も有効にしない。デプロイが失敗すると
+  安全網が auto-merge を解除するので、人間が障害 Issue を close するまでラインは止まる。close した後、
+  止めた PR に `@dependabot rebase` とコメントすると判定がやり直される。
+- Dependabot の PR に Dependabot 以外のコミットが積まれていると、メタデータが取れずに対象外になる。
+- auto-merge の有効化には保守用 App のトークンを使う。`GITHUB_TOKEN` でマージした push はデプロイを起動しない。
+  App のトークンは Dependabot の run から使うため、`MAINT_APP_CLIENT_ID` と `MAINT_APP_PRIVATE_KEY` は
+  Dependabot secrets にも登録しておく。
 
 ### CfnOutput
 
