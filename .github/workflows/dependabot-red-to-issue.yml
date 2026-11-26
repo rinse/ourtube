@@ -1,0 +1,77 @@
+name: Dependabot CI failure to issue
+
+# When CI fails on a Dependabot PR, file a `ready` issue asking for the same
+# update in a form that passes CI. The scheduled maintenance agent (loop-dev,
+# run as a Claude cloud scheduled task) picks up `ready` + `dependabot-ci`
+# issues and delivers a superseding PR. One issue per Dependabot PR: the PR
+# number is recorded in the body and open issues are checked first.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  actions: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  file-issue:
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/')
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          pr=$(gh api "repos/$repo/pulls?state=open&head=${repo%%/*}:$BRANCH" --jq '.[0] // empty')
+          [[ -n "$pr" ]] || { echo "open PR for $BRANCH not found"; exit 0; }
+          num=$(jq -r .number <<<"$pr")
+          title=$(jq -r .title <<<"$pr")
+          marker="<!-- dependabot-pr: $num -->"
+          if gh issue list --repo "$repo" --state open --label dependabot-ci --limit 100 --json body \
+              --jq '.[].body' | grep -qF "$marker"; then
+            echo "an open issue already covers #$num"; exit 0
+          fi
+          jobs=$(gh api "repos/$repo/actions/runs/$RUN_ID/jobs" \
+              --jq '.jobs[] | select(.conclusion == "failure") | "\(.name)\t\(.id)"' |
+            while IFS=$'\t' read -r name id; do
+              # shellcheck disable=SC2016 # backticks are Markdown, not expansion
+              printf -- '- `%s`（ログ: `gh api repos/%s/actions/jobs/%s/logs`）\n' "$name" "$repo" "$id"
+            done)
+          body="$RUNNER_TEMP/issue.md"
+          cat > "$body" <<MD
+          $marker
+          ## 背景
+
+          Dependabot の PR #$num（$title）で CI が失敗している。
+
+          - 失敗した job:
+          $jobs
+          - CI の実行: $RUN_URL
+
+          ## 目的
+
+          #$num の依存更新を、CI が通る形で main に取り込む。
+
+          ## 制約
+
+          - 新しいブランチと PR で行う。Dependabot のブランチ（\`$BRANCH\`）には push しない。
+          - #$num と同じ依存更新に、CI を通すのに必要な最小限の変更だけを加える。ほかの依存は上げない。
+          - 失敗の原因が依存更新と関係ない（main でも同じく落ちる、など）なら、直さずに止まって報告する。
+
+          ## 受け入れ条件
+
+          - [ ] #$num で更新される依存が、#$num と同じか、それより新しいバージョンになっている
+          - [ ] 失敗していた job と同じ手順（\`.github/workflows/ci.yml\`）が、手元で通る
+          - [ ] PR 本文に \`Closes\` でこの Issue を、\`Supersedes #$num\` で置き換える Dependabot PR を書く
+          MD
+          gh issue create --repo "$repo" --title "fix(deps): Dependabot #$num を CI が通る形で取り込む" \
+            --body-file "$body" --label ready --label dependencies --label dependabot-ci
