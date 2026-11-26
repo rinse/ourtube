@@ -60,6 +60,9 @@ export interface VideoplayerStackProps extends StackProps {
   // Omitted by default so the stack still synths/deploys with no extra config —
   // the alarms remain defined and visible in the CloudWatch console either way.
   alarmEmail?: string;
+  // Optional: IAM role ARN allowed to invoke the post-deploy smoke probe (the
+  // GitHub Actions deploy role). Omitted in credential-less synth (CI).
+  smokeInvokerArn?: string;
 }
 
 const BACKEND = path.join(__dirname, '..', '..', 'backend');
@@ -555,6 +558,24 @@ function handler(event) {
       resources: ['*'],
       conditions: { ArnEquals: { 'ecs:cluster': cluster.clusterArn } },
     }));
+
+    // --- Post-deploy smoke probe ---------------------------------------------
+    // CloudFront admits JP viewers only (geo allowlist above) and GitHub-hosted
+    // runners are not in JP, so deploy.yml cannot probe the site itself. This
+    // Lambda probes it from ap-northeast-1 through CloudFront, the same path a
+    // viewer takes. Fixed name: scripts/smoke.sh invokes it by name.
+    const smokeFn = new lambda.Function(this, 'SmokeFn', {
+      functionName: 'ourtube-smoke',
+      code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda', 'smoke')),
+      handler: 'index.handler',
+      runtime: lambda.Runtime.NODEJS_22_X,
+      timeout: Duration.seconds(30),
+      environment: { SITE_URL: `https://${APP_DOMAIN}` },
+    });
+    // Resource policy instead of editing the hand-made deploy role.
+    if (props.smokeInvokerArn) {
+      smokeFn.grantInvoke(new iam.ArnPrincipal(props.smokeInvokerArn));
+    }
 
     // --- Outputs -------------------------------------------------------------
     new CfnOutput(this, 'SiteUrl', { value: `https://${distribution.distributionDomainName}` });

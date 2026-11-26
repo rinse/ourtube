@@ -36,4 +36,5 @@ new VideoplayerStack(app, 'VideoplayerStack', {
   certificate: certStack.certificate,
   bedrockModelId: process.env.BEDROCK_MODEL_ID ?? 'apac.anthropic.claude-sonnet-4-20250514-v1:0',
   alarmEmail: process.env.ALARM_EMAIL,
+  smokeInvokerArn: process.env.SMOKE_INVOKER_ARN,
 });
