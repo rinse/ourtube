@@ -39,6 +39,10 @@ jobs:
       - run: npm run build
         env:
           NEXT_EXPORT: 'true'
+      # Smoke test of the export in a real browser (e2e/), so dependency
+      # updates that only break at runtime fail here.
+      - run: npx playwright install --with-deps --only-shell chromium
+      - run: npm run test:e2e
 
   infra:
     runs-on: ubuntu-latest
