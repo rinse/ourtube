@@ -4,9 +4,10 @@ name: Dependabot auto-merge
 # merge itself still waits for the required checks (backend/frontend/infra),
 # and the push to main then deploys through deploy.yml's safety net.
 #
-# Merged automatically: npm in /backend (patch, minor), npm in /frontend
-# (patch only; it has no tests yet). Everything else — /infra, GitHub
-# Actions, majors, unknown metadata — is left for a human.
+# Merged automatically: npm in /backend and /frontend (patch, minor; the
+# frontend is covered by the browser smoke test in frontend/e2e). Everything
+# else — /infra, GitHub Actions, majors, unknown metadata — is left for a
+# human.
 #
 # While an incident issue (title starting with "障害:") is open, nothing is
 # turned on: deploy.yml pauses auto-merge on failure and the line stays
@@ -44,7 +45,7 @@ jobs:
           [[ "$MAINTAINER_CHANGES" != true ]] || skip "パッケージのメンテナが変わった"
           case "$DIR $UPDATE" in
             "/backend version-update:semver-patch" | "/backend version-update:semver-minor" | \
-              "/frontend version-update:semver-patch") ;;
+              "/frontend version-update:semver-patch" | "/frontend version-update:semver-minor") ;;
             *) skip "'$DIR' の '$UPDATE' は対象外" ;;
           esac
           # List API, not search: search can lag behind a just-filed issue.

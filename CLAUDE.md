@@ -61,6 +61,7 @@ cd backend && npm test           # vitest
 # Frontend
 cd frontend && npm run dev
 cd frontend && NEXT_EXPORT=true npm run build   # static export to out/
+cd frontend && npm run test:e2e   # browser smoke test of out/ (Playwright, /api mocked)
 
 # Infra
 cd infra && npm run synth
