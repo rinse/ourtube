@@ -197,6 +197,20 @@ Dependabot の PR のうち、人間の判断が要らないものだけ auto-me
   App のトークンは Dependabot の run から使うため、`MAINT_APP_CLIENT_ID` と `MAINT_APP_PRIVATE_KEY` は
   Dependabot secrets にも登録しておく。
 
+### CI が落ちた Dependabot PR（dependabot-red-to-issue.yml）
+
+Dependabot の PR で CI が落ちると、同じ依存更新を CI が通る形で取り込むよう求める Issue を起票する
+（ラベル `ready`、`dependencies`、`dependabot-ci`）。1 つの Dependabot PR につき open な Issue は 1 件まで。
+
+この Issue は、Claude のクラウドのスケジュール実行で毎日回す保守エージェントが loop-dev の手順で処理し、
+Dependabot PR を置き換える PR（`loop/<Issue 番号>` ブランチ、ドラフトでない）を納品する。マージは人間が行う。
+
+- クラウドのセッションではプラグインが読み込まれないため、タスクのソースに `rinse/skills` も clone させ、
+  loop-dev の SKILL.md を直接読ませている。
+- クラウドからは GitHub の GraphQL が使えないので、GitHub の操作は `gh api` の REST で行わせている。
+  リモートのブランチは消せないため、`loop/*` ブランチは人間が片付ける。
+- エージェントが差し戻した Issue は `ready` が外れたまま残る。直して `ready` を付け直せば再び処理される。
+
 ### CfnOutput
 
 | 出力 | 用途 |
