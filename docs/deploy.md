@@ -91,18 +91,20 @@ rule は Environment の属性）。そこで**実在する 2 つの Environment
 - `production-infra`（必須レビュア承認あり）— `infra/**` とワークフロー（`.github/workflows/**`）
   変更時、および手動起動（`workflow_dispatch`）用。
 
-`detect` job が変更内容に `infra/**` / `.github/workflows/**` が含まれるか（`dorny/paths-filter`）
-を判定し、`deploy` job の `environment.name` を式で切り替える:
+`detect` job が、直前に成功したデプロイ（Deploy run のうち `main` で `success` のものの `headSha`）
+から今回のコミットまでに `infra/**` / `.github/workflows/**` の変更が含まれるかを判定し、`deploy` job の `environment.name` を式で切り替える:
 
 ```yaml
 environment:
   name: ${{ needs.detect.outputs.infra == 'true' && 'production-infra' || 'production' }}
 ```
 
+- 基準を push 直前のコミット（`github.event.before`）にしないのは、concurrency が待機中の run を
+  置き換えるためである。置き換えられた run のコミットは一度もデプロイされておらず、そこを基準にすると
+  その run に含まれていた infra の変更が承認なしでデプロイされてしまう。
+- ロールバックした run は failure で終わるので、成功した run は常に正常にデプロイされたコミットを指す。
+- 成功したデプロイが見つからない場合や、差分を取れない場合は承認必須に倒す。
 - **手動起動（`workflow_dispatch`）は常に承認必須**（`production-infra`）に倒している。
-  手動起動では paths-filter の diff 基準が曖昧なため、安全側に振っている。
-- paths-filter は push イベントで pre-push コミットとの diff を取るため、`detect` job は
-  push 時に checkout（`fetch-depth: 0`）してから判定する。
 
 ### 手動セットアップ前提（重要）
 

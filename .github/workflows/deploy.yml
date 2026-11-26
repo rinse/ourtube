@@ -37,28 +37,35 @@ permissions:
 
 jobs:
   # Decide whether this deploy needs human approval. infra/** or workflow
-  # changes → approval (production-infra). Manual dispatch is always treated as
-  # infra (safe side): the diff base for paths-filter is ambiguous on dispatch,
-  # so we skip the filter there and force the approval path.
+  # changes → approval (production-infra). The base is the last successful
+  # deploy, not github.event.before: concurrency replaces a pending run, so
+  # `before` may be a commit that never deployed, and its infra change would
+  # slip through unapproved. No successful deploy found (or the diff fails) →
+  # approval. Manual dispatch is always treated as infra (safe side).
   detect:
     runs-on: ubuntu-latest
     outputs:
-      infra: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.infra == 'true' }}
+      infra: ${{ steps.diff.outputs.infra }}
     steps:
-      # paths-filter needs the repo checked out to diff against the pre-push
-      # commit on push events. Full history guarantees the merge-base is found.
       - uses: actions/checkout@v6
         if: github.event_name == 'push'
         with:
           fetch-depth: 0
-      - uses: dorny/paths-filter@v3
-        id: filter
-        if: github.event_name == 'push'
-        with:
-          filters: |
-            infra:
-              - 'infra/**'
-              - '.github/workflows/**'
+          persist-credentials: false
+      - id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          infra=true
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            sha=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy.yml --branch main \
+              --status success --limit 1 --json headSha --jq '.[0].headSha // empty') || sha=
+            echo "last successful deploy: ${sha:-none}"
+            if [[ -n "$sha" ]] && git diff --quiet "$sha" "$GITHUB_SHA" -- infra/ .github/workflows/; then
+              infra=false
+            fi
+          fi
+          echo "infra=$infra" | tee -a "$GITHUB_OUTPUT"
 
   deploy:
     needs: detect
