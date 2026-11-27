@@ -148,6 +148,9 @@ concurrency:
 
 ### 自動の安全網（deploy.yml）
 
+保守の自律化の全体（自動マージ、保守エージェントを含む）と、別のリポジトリで再現する手順は
+[`docs/maintenance-autonomy.md`](maintenance-autonomy.md) にまとめてある。
+
 デプロイ直後に、偽の `session` Cookie 付きで `/` が 200（SPA の配信）、
 `/api/videos` が 401（Lambda が起動して認証まで到達）を返すかを確かめる。振る舞いの検証ではなく
 「起動している」ことの確認にとどまる。
